@@ -1,4 +1,4 @@
-module github.com/luceid/opti-mac
+module github.com/agungdp150/optimac
 
 go 1.26
 

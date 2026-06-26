@@ -6,7 +6,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/luceid/opti-mac/internal/opti"
+	"github.com/agungdp150/optimac/internal/opti"
 )
 
 func (m model) openApps() (tea.Model, tea.Cmd) {

@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/luceid/opti-mac/internal/opti"
+	"github.com/agungdp150/optimac/internal/opti"
 )
 
 type largeFileCategory struct {

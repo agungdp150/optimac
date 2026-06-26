@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/luceid/opti-mac/internal/opti"
+	"github.com/agungdp150/optimac/internal/opti"
 )
 
 func duplicateModel() model {

@@ -12,9 +12,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/agungdp150/optimac/internal/opti"
+	"github.com/agungdp150/optimac/internal/tui"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/luceid/opti-mac/internal/opti"
-	"github.com/luceid/opti-mac/internal/tui"
 )
 
 func Run(args []string, version string) error {

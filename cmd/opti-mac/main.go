@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/luceid/opti-mac/internal/cli"
+	"github.com/agungdp150/optimac/internal/cli"
 )
 
 var version = "0.1.0"

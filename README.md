@@ -5,7 +5,7 @@
 </div>
 
 <p align="center">
-  <a href="https://github.com/luceid/opti-mac/stargazers"><img src="https://img.shields.io/github/stars/luceid/opti-mac?style=flat-square" alt="Stars"></a>
+  <a href="https://github.com/agungdp150/optimac/stargazers"><img src="https://img.shields.io/github/stars/agungdp150/optimac?style=flat-square" alt="Stars"></a>
   <a href="./VERSION"><img src="https://img.shields.io/badge/version-0.1.0-38BDF8?style=flat-square" alt="Version"></a>
   <a href="./LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square" alt="License"></a>
   <a href="#requirements"><img src="https://img.shields.io/badge/platform-macOS-lightgrey?style=flat-square" alt="Platform"></a>
@@ -43,8 +43,8 @@ OptiMac is a CLI-first macOS maintenance tool with an interactive terminal UI. I
 **Build from source**
 
 ```bash
-git clone https://github.com/luceid/opti-mac.git
-cd opti-mac
+git clone https://github.com/agungdp150/optimac.git
+cd optimac
 asdf install
 make build
 ./bin/opti-mac
@@ -64,7 +64,43 @@ This installs the binary to `~/.local/bin/opti-mac`.
 A formula template is available at [packaging/homebrew/opti-mac.rb](./packaging/homebrew/opti-mac.rb). After a release archive and SHA256 are published:
 
 ```bash
-brew install luceid/tap/opti-mac
+brew install agungdp150/tap/opti-mac
+```
+
+## Uninstall Completely
+
+OptiMac only writes to two locations in your home directory, so removing it is clean and predictable. Pick the step that matches how you installed it, then remove the data directories.
+
+> Optional: if you used trash-backed actions (`uninstall`, `browser`, or `clean --trash`) and want to recover anything first, run `opti-mac trash status` / `opti-mac restore <id>` before deleting `~/.opti-mac`.
+
+**1. Remove the binary**
+
+```bash
+# Homebrew install
+brew uninstall opti-mac
+brew untap agungdp150/tap        # optional: also remove the tap
+
+# make install
+rm -f ~/.local/bin/opti-mac
+
+# build from source
+rm -rf /path/to/optimac           # the cloned repo, including ./bin
+```
+
+**2. Remove OptiMac data (config, trash, and operation log)**
+
+```bash
+rm -rf ~/.config/opti-mac         # configuration (config.json); or $XDG_CONFIG_HOME/opti-mac if set
+rm -rf ~/.opti-mac                # managed trash + operation log
+```
+
+That's everything OptiMac creates. It does not install LaunchAgents, login items, or system files, and it never writes outside your home directory.
+
+To verify nothing is left behind:
+
+```bash
+ls ~/.config/opti-mac ~/.opti-mac 2>/dev/null   # should print nothing
+command -v opti-mac                              # should print nothing
 ```
 
 ## Run

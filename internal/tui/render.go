@@ -6,7 +6,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/luceid/opti-mac/internal/opti"
+	"github.com/agungdp150/optimac/internal/opti"
 )
 
 func (m model) View() string {

@@ -5,7 +5,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/luceid/opti-mac/internal/opti"
+	"github.com/agungdp150/optimac/internal/opti"
 )
 
 type screen int

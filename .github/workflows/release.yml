@@ -1,0 +1,45 @@
+name: release
+
+# Creates a GitHub release and bumps the Homebrew tap formula whenever a
+# version tag (e.g. v0.1.0) is pushed.
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26.4"
+
+      - name: Verify build and tests
+        run: |
+          go vet ./...
+          go test ./...
+          go build -o /dev/null ./cmd/opti-mac
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+
+      # Updates url + sha256 in agungdp150/homebrew-tap/Formula/opti-mac.rb.
+      # Requires a repo secret COMMITTER_TOKEN: a Personal Access Token with
+      # read/write access to the homebrew-tap repository.
+      - name: Bump Homebrew formula
+        uses: mislav/bump-homebrew-formula-action@v3
+        with:
+          formula-name: opti-mac
+          formula-path: Formula/opti-mac.rb
+          homebrew-tap: agungdp150/homebrew-tap
+          download-url: https://github.com/agungdp150/optimac/archive/refs/tags/${{ github.ref_name }}.tar.gz
+        env:
+          COMMITTER_TOKEN: ${{ secrets.COMMITTER_TOKEN }}
