@@ -1,0 +1,50 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">OptiMac logo</title>
+  <desc id="desc">A polished sleeping cat face icon for the OptiMac terminal cleaner.</desc>
+  <defs>
+    <radialGradient id="bg" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(148 96) rotate(46) scale(500)">
+      <stop stop-color="#25324A"/>
+      <stop offset="0.66" stop-color="#111827"/>
+      <stop offset="1" stop-color="#070A12"/>
+    </radialGradient>
+    <linearGradient id="ring" x1="130" y1="122" x2="390" y2="390" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#67E8F9"/>
+      <stop offset="0.52" stop-color="#5EEAD4"/>
+      <stop offset="1" stop-color="#F9A8D4"/>
+    </linearGradient>
+    <linearGradient id="face" x1="164" y1="150" x2="348" y2="366" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFF8E7"/>
+      <stop offset="1" stop-color="#F2DFC2"/>
+    </linearGradient>
+    <filter id="shadow" x="90" y="96" width="332" height="330" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="22" stdDeviation="20" flood-color="#020617" flood-opacity="0.42"/>
+    </filter>
+  </defs>
+
+  <rect width="512" height="512" rx="104" fill="url(#bg)"/>
+  <circle cx="256" cy="270" r="160" fill="#0C1424"/>
+  <circle cx="256" cy="270" r="148" stroke="url(#ring)" stroke-width="11" stroke-linecap="round"/>
+
+  <g filter="url(#shadow)">
+    <path d="M166 238L153 176C150 163 166 156 175 166L219 207C231 197 244 192 258 192C272 192 285 197 297 207L337 168C346 158 362 165 359 178L348 239C368 260 378 287 372 315C362 362 318 388 256 388C194 388 150 362 140 315C134 287 145 260 166 238Z" fill="url(#face)"/>
+  </g>
+
+  <path d="M181 183L190 223L218 206L181 183Z" fill="#F9A8D4" fill-opacity="0.56"/>
+  <path d="M331 183L322 223L294 206L331 183Z" fill="#F9A8D4" fill-opacity="0.56"/>
+
+  <path d="M190 287C204 300 222 300 236 287" stroke="#2A1303" stroke-width="11" stroke-linecap="round"/>
+  <path d="M276 287C290 300 308 300 322 287" stroke="#2A1303" stroke-width="11" stroke-linecap="round"/>
+  <path d="M247 320C252 315 260 315 265 320L272 326C276 330 274 337 268 340C260 344 252 344 244 340C238 337 236 330 240 326L247 320Z" fill="#EC6FA8"/>
+  <path d="M255 342C254 356 246 365 233 371" stroke="#2A1303" stroke-width="8" stroke-linecap="round"/>
+  <path d="M257 342C258 356 266 365 279 371" stroke="#2A1303" stroke-width="8" stroke-linecap="round"/>
+
+  <path d="M170 328H122" stroke="#2A1303" stroke-width="6" stroke-linecap="round"/>
+  <path d="M174 349L130 361" stroke="#2A1303" stroke-width="6" stroke-linecap="round"/>
+  <path d="M342 328H390" stroke="#2A1303" stroke-width="6" stroke-linecap="round"/>
+  <path d="M338 349L382 361" stroke="#2A1303" stroke-width="6" stroke-linecap="round"/>
+
+  <text x="358" y="128" fill="#CFFAFE" font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" font-size="31" font-weight="800">z</text>
+  <text x="386" y="98" fill="#FDE68A" font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" font-size="22" font-weight="800">z</text>
+  <circle cx="120" cy="160" r="6" fill="#5EEAD4"/>
+  <circle cx="397" cy="226" r="5" fill="#F9A8D4"/>
+</svg>

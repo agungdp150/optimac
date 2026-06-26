@@ -1,0 +1,105 @@
+<svg width="1280" height="640" viewBox="0 0 1280 640" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">OptiMac README hero</title>
+  <desc id="desc">A polished dark terminal dashboard hero for OptiMac with a sleeping cat mascot and compact cleanup panels.</desc>
+  <defs>
+    <radialGradient id="pageBg" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(166 54) rotate(39) scale(1020 720)">
+      <stop stop-color="#263247"/>
+      <stop offset="0.58" stop-color="#111827"/>
+      <stop offset="1" stop-color="#070A12"/>
+    </radialGradient>
+    <linearGradient id="shell" x1="92" y1="78" x2="1188" y2="576" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#101827"/>
+      <stop offset="1" stop-color="#070B13"/>
+    </linearGradient>
+    <linearGradient id="border" x1="92" y1="78" x2="1188" y2="576" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#67E8F9"/>
+      <stop offset="0.5" stop-color="#94A3B8"/>
+      <stop offset="1" stop-color="#F9A8D4"/>
+    </linearGradient>
+    <linearGradient id="face" x1="164" y1="158" x2="336" y2="352" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFF8E7"/>
+      <stop offset="1" stop-color="#F2DFC2"/>
+    </linearGradient>
+    <filter id="shellShadow" x="58" y="48" width="1164" height="556" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="28" stdDeviation="24" flood-color="#020617" flood-opacity="0.48"/>
+    </filter>
+    <filter id="catShadow" x="108" y="122" width="296" height="288" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="18" stdDeviation="18" flood-color="#020617" flood-opacity="0.42"/>
+    </filter>
+  </defs>
+
+  <rect width="1280" height="640" fill="url(#pageBg)"/>
+  <path d="M0 482C162 426 318 444 468 496C640 556 770 550 936 486C1078 431 1185 418 1280 442V640H0V482Z" fill="#0B1220" fill-opacity="0.74"/>
+  <path d="M118 144H1162M118 248H1162M118 352H1162M118 456H1162M252 96V552M386 96V552M520 96V552M654 96V552M788 96V552M922 96V552M1056 96V552" stroke="#334155" stroke-opacity="0.12"/>
+
+  <g filter="url(#shellShadow)">
+    <rect x="92" y="76" width="1096" height="500" rx="34" fill="url(#shell)" stroke="url(#border)" stroke-width="2.5"/>
+    <rect x="92" y="76" width="1096" height="56" rx="34" fill="#0B1020"/>
+    <path d="M92 132H1188" stroke="#223047" stroke-width="2"/>
+    <circle cx="130" cy="104" r="8" fill="#F87171"/>
+    <circle cx="158" cy="104" r="8" fill="#FBBF24"/>
+    <circle cx="186" cy="104" r="8" fill="#34D399"/>
+    <text x="236" y="112" fill="#F8FAFC" font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" font-size="24" font-weight="900">opti-mac</text>
+    <text x="1064" y="110" fill="#94A3B8" font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" font-size="17" font-weight="800">v0.1.0</text>
+  </g>
+
+  <g filter="url(#catShadow)">
+    <circle cx="258" cy="260" r="112" fill="#172036" stroke="#2A3B59" stroke-width="3"/>
+    <path d="M185 257L171 188C168 175 184 167 193 177L239 221C251 212 264 208 278 208C292 208 305 212 317 221L358 179C367 169 383 177 380 190L367 257C387 278 396 305 390 333C380 378 337 402 276 402C215 402 172 378 162 333C156 304 165 278 185 257Z" fill="url(#face)"/>
+    <path d="M204 193L214 237L244 219L204 193Z" fill="#F9A8D4" fill-opacity="0.58"/>
+    <path d="M347 193L337 237L307 219L347 193Z" fill="#F9A8D4" fill-opacity="0.58"/>
+    <path d="M213 294C226 307 243 307 256 294" stroke="#2A1303" stroke-width="9" stroke-linecap="round"/>
+    <path d="M295 294C308 307 325 307 338 294" stroke="#2A1303" stroke-width="9" stroke-linecap="round"/>
+    <path d="M270 328C274 324 280 324 284 328L289 333C292 336 291 342 286 344C279 347 273 347 266 344C261 342 260 336 263 333L270 328Z" fill="#EC6FA8"/>
+    <path d="M276 348C275 360 268 368 257 373" stroke="#2A1303" stroke-width="6" stroke-linecap="round"/>
+    <path d="M278 348C279 360 286 368 297 373" stroke="#2A1303" stroke-width="6" stroke-linecap="round"/>
+    <text x="395" y="202" fill="#CFFAFE" font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" font-size="24" font-weight="800">z</text>
+    <text x="420" y="176" fill="#FDE68A" font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" font-size="17" font-weight="800">z</text>
+  </g>
+
+  <text x="146" y="462" fill="#F8FAFC" font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" font-size="56" font-weight="900">OptiMac</text>
+  <text x="150" y="504" fill="#99F6E4" font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" font-size="24" font-weight="800">cleanup with confidence</text>
+  <text x="150" y="536" fill="#CBD5E1" font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" font-size="16">preview, select, delete, restore</text>
+
+  <g font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace">
+    <rect x="532" y="172" width="284" height="144" rx="18" fill="#0F172A" stroke="#26364F" stroke-width="2"/>
+    <text x="558" y="208" fill="#F8FAFC" font-size="21" font-weight="900">Analyze Disk</text>
+    <text x="558" y="236" fill="#94A3B8" font-size="14">folder-first large files</text>
+    <text x="558" y="270" fill="#7DD3FC" font-size="16" font-weight="800">Home</text>
+    <rect x="628" y="258" width="112" height="12" rx="6" fill="#1E293B"/>
+    <rect x="628" y="258" width="78" height="12" rx="6" fill="#38BDF8"/>
+    <text x="752" y="271" fill="#E2E8F0" font-size="15">99 GB</text>
+    <text x="558" y="296" fill="#F9A8D4" font-size="16" font-weight="800">Cache</text>
+    <rect x="628" y="284" width="112" height="12" rx="6" fill="#1E293B"/>
+    <rect x="628" y="284" width="46" height="12" rx="6" fill="#F9A8D4"/>
+    <text x="752" y="297" fill="#E2E8F0" font-size="15">21 GB</text>
+
+    <rect x="846" y="172" width="284" height="144" rx="18" fill="#0F172A" stroke="#26364F" stroke-width="2"/>
+    <text x="872" y="208" fill="#F8FAFC" font-size="21" font-weight="900">Deep Clean</text>
+    <text x="872" y="236" fill="#94A3B8" font-size="14">transparent checks</text>
+    <text x="872" y="272" fill="#5EEAD4" font-size="17" font-weight="900">READY</text>
+    <text x="942" y="272" fill="#E2E8F0" font-size="16">93 locations</text>
+    <text x="872" y="300" fill="#FDE68A" font-size="17" font-weight="900">TRASH</text>
+    <text x="942" y="300" fill="#E2E8F0" font-size="16">restorable</text>
+
+    <rect x="532" y="348" width="284" height="130" rx="18" fill="#0F172A" stroke="#26364F" stroke-width="2"/>
+    <text x="558" y="384" fill="#F8FAFC" font-size="21" font-weight="900">Duplicates</text>
+    <text x="558" y="414" fill="#CBD5E1" font-size="15">select files safely</text>
+    <text x="558" y="448" fill="#F9A8D4" font-size="18" font-weight="900">42.1 GB</text>
+    <text x="654" y="448" fill="#94A3B8" font-size="16">reviewed</text>
+
+    <rect x="846" y="348" width="284" height="130" rx="18" fill="#0F172A" stroke="#26364F" stroke-width="2"/>
+    <text x="872" y="384" fill="#F8FAFC" font-size="21" font-weight="900">Live Status</text>
+    <text x="872" y="416" fill="#CBD5E1" font-size="15">CPU</text>
+    <rect x="922" y="405" width="118" height="11" rx="6" fill="#1E293B"/>
+    <rect x="922" y="405" width="50" height="11" rx="6" fill="#60A5FA"/>
+    <text x="1054" y="417" fill="#E2E8F0" font-size="15">35%</text>
+    <text x="872" y="448" fill="#CBD5E1" font-size="15">RAM</text>
+    <rect x="922" y="437" width="118" height="11" rx="6" fill="#1E293B"/>
+    <rect x="922" y="437" width="88" height="11" rx="6" fill="#34D399"/>
+    <text x="1054" y="449" fill="#E2E8F0" font-size="15">76%</text>
+  </g>
+
+  <path d="M132 544H1148" stroke="#334155" stroke-opacity="0.62"/>
+  <text x="946" y="536" fill="#94A3B8" font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" font-size="14">review-first cleanup</text>
+</svg>
