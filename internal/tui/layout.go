@@ -13,7 +13,7 @@ func frame(content string, width int) string {
 		width = 88
 	}
 	contentWidth := width - 4
-	if contentWidth < 60 {
+	if contentWidth < 1 {
 		contentWidth = width
 	}
 	return panel.Width(contentWidth).Render(content)

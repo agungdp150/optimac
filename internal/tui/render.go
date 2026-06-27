@@ -40,9 +40,9 @@ func (m model) renderMenu() string {
 	if contentWidth <= 0 {
 		contentWidth = 80
 	}
-	contentWidth = clamp(contentWidth, 58, 150)
+	contentWidth = clamp(contentWidth, 36, 150)
 
-	if contentWidth >= 94 && m.height >= 28 {
+	if contentWidth >= 112 && m.height >= 34 {
 		b.WriteString(m.renderHeader(contentWidth))
 		b.WriteString("\n")
 		menuWidth := clamp(contentWidth/3, 38, 48)
@@ -51,7 +51,7 @@ func (m model) renderMenu() string {
 		detail := m.renderDetailPanel(detailWidth)
 		b.WriteString(lipgloss.JoinHorizontal(lipgloss.Top, menu, "  ", detail))
 	} else {
-		stackWidth := clamp(contentWidth-8, 46, 78)
+		stackWidth := clamp(contentWidth-8, 30, 78)
 		b.WriteString(m.renderCompactMenu(stackWidth))
 	}
 	b.WriteString("\n\n")
@@ -70,26 +70,61 @@ func (m model) renderCompactMenu(width int) string {
 	b.WriteString("\n\n")
 	b.WriteString(badge.Render("ACTIONS"))
 	b.WriteString("\n")
-	for i, item := range m.items {
+	start, end := m.visibleMenuRange()
+	if start > 0 {
+		b.WriteString(subtle.Render(fmt.Sprintf("↑ %d more", start)))
+		b.WriteString("\n")
+	}
+	for i := start; i < end; i++ {
+		item := m.items[i]
 		line := fmt.Sprintf("%d  %s  %s", i+1, item.icon, item.title)
+		line = truncateLine(line, width-8)
 		if i == m.cursor {
 			b.WriteString(selected.Width(width - 8).Render(line))
 		} else {
 			b.WriteString(normal.Width(width - 8).Render(line))
 		}
-		if i < len(m.items)-1 {
+		if i < end-1 {
 			b.WriteString("\n")
 		}
+	}
+	if end < len(m.items) {
+		b.WriteString("\n")
+		b.WriteString(subtle.Render(fmt.Sprintf("↓ %d more", len(m.items)-end)))
 	}
 	b.WriteString("\n\n")
 	b.WriteString(subtle.Render("Selected"))
 	b.WriteString("\n")
 	b.WriteString(appName.Render(item.title))
 	b.WriteString("  ")
-	b.WriteString(keyStyle.Render(item.command))
+	b.WriteString(keyStyle.Render(truncateLine(item.command, width-lipgloss.Width(item.title)-4)))
 	b.WriteString("\n")
 	b.WriteString(truncateLine(item.description, width-8))
 	return card.Width(width).Render(b.String())
+}
+
+func (m model) visibleMenuRange() (int, int) {
+	total := len(m.items)
+	if total == 0 {
+		return 0, 0
+	}
+	visible := total
+	if m.height > 0 {
+		visible = clamp(m.height-16, 5, total)
+	}
+	if visible >= total {
+		return 0, total
+	}
+	start := m.cursor - visible/2
+	if start < 0 {
+		start = 0
+	}
+	end := start + visible
+	if end > total {
+		end = total
+		start = end - visible
+	}
+	return start, end
 }
 
 func (m model) renderHeader(width int) string {
