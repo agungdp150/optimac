@@ -61,7 +61,7 @@ This installs the binary to `~/.local/bin/opti-mac`.
 
 **Homebrew**
 
-A formula template is available at [packaging/homebrew/opti-mac.rb](./packaging/homebrew/opti-mac.rb). After a release archive and SHA256 are published:
+A formula is available at [packaging/homebrew/opti-mac.rb](./packaging/homebrew/opti-mac.rb). After it is published to `agungdp150/homebrew-tap` as `Formula/opti-mac.rb`:
 
 ```bash
 brew install agungdp150/tap/opti-mac
