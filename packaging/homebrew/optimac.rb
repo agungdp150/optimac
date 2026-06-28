@@ -1,8 +1,8 @@
 class Optimac < Formula
   desc "Safe macOS cleanup and maintenance CLI"
   homepage "https://github.com/agungdp150/optimac"
-  url "https://github.com/agungdp150/optimac/archive/refs/tags/v0.1.1.tar.gz"
-  sha256 "1a28f93612891e398942f1dd3eb55435a6686e32b09541efa134226d0729909b"
+  url "https://github.com/agungdp150/optimac/archive/refs/tags/v0.1.2.tar.gz"
+  sha256 "af3e81ec284d66b6b62eefd1de01705fecfd1a6e80afcf3d779a828d07050273"
   license "MIT"
 
   depends_on "go" => :build
