@@ -15,7 +15,7 @@ type HealthCheck struct {
 	Detail string `json:"detail"`
 }
 
-// HealthReport is the result of `opti-mac doctor`.
+// HealthReport is the result of `optimac doctor`.
 type HealthReport struct {
 	Checks []HealthCheck `json:"checks"`
 }

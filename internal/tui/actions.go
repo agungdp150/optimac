@@ -328,7 +328,7 @@ func buildArtifacts() resultMsg {
 		}
 		fmt.Fprintf(&b, "%s  %s  %s\n", colorSize(dir.Size), subtle.Render(fmt.Sprintf("%-22s", dir.Kind)), dir.Path)
 	}
-	fmt.Fprintf(&b, "\n%s\n%s", warnText.Render(fmt.Sprintf("Found %s across %d directories.", opti.FormatBytes(total), len(dirs))), subtle.Render("Remove with: opti-mac artifacts . --execute"))
+	fmt.Fprintf(&b, "\n%s\n%s", warnText.Render(fmt.Sprintf("Found %s across %d directories.", opti.FormatBytes(total), len(dirs))), subtle.Render("Remove with: optimac artifacts . --execute"))
 	return resultMsg{title: "Project Artifacts", body: b.String()}
 }
 
@@ -373,7 +373,7 @@ func buildLoginItems() resultMsg {
 		}
 		fmt.Fprintf(&b, "%-13s %-9s %s\n", item.Scope, state, item.Label)
 	}
-	b.WriteString("\nToggle with: opti-mac login disable <label>")
+	b.WriteString("\nToggle with: optimac login disable <label>")
 	return resultMsg{title: "Login Items", body: b.String()}
 }
 

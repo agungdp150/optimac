@@ -151,7 +151,7 @@ func uninstallResultBody(app string, r opti.CleanResult) string {
 	}
 	fmt.Fprintf(&b, "%s %s across %d items\n", verb, opti.FormatBytes(r.RemovedBytes), r.RemovedCount)
 	if r.Trashed && r.OperationID != "" {
-		fmt.Fprintf(&b, "%s\n", subtle.Render("Restore with: opti-mac restore "+r.OperationID))
+		fmt.Fprintf(&b, "%s\n", subtle.Render("Restore with: optimac restore "+r.OperationID))
 	}
 	if len(r.Failures) > 0 {
 		fmt.Fprintf(&b, "\n%s\n", warnText.Render(fmt.Sprintf("Skipped %d items (likely need sudo):", len(r.Failures))))

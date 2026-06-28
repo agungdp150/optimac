@@ -7,7 +7,7 @@ import (
 )
 
 // Config holds user-tunable behaviour loaded from
-// ~/.config/opti-mac/config.json. A missing file yields DefaultConfig.
+// ~/.config/optimac/config.json. A missing file yields DefaultConfig.
 type Config struct {
 	// UseTrash moves cleaned files to the OptiMac trash instead of deleting
 	// them permanently, so they can be restored. Defaults to true.
@@ -48,9 +48,9 @@ func configDir() (string, error) {
 		return "", err
 	}
 	if base := os.Getenv("XDG_CONFIG_HOME"); base != "" && os.Geteuid() != 0 {
-		return filepath.Join(base, "opti-mac"), nil
+		return filepath.Join(base, "optimac"), nil
 	}
-	return filepath.Join(home, ".config", "opti-mac"), nil
+	return filepath.Join(home, ".config", "optimac"), nil
 }
 
 // LoadConfig reads the config file, returning DefaultConfig if it is absent.

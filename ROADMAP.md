@@ -6,7 +6,7 @@ OptiMac is being built as a safe macOS maintenance tool with CLI-first workflows
 
 - Safe cleanup scanner and executor
 - Trash-backed removal with an operation log, `restore`, and `trash empty`
-- Configurable cleanup targets and exclude paths via `~/.config/opti-mac/config.json`
+- Configurable cleanup targets and exclude paths via `~/.config/optimac/config.json`
 - Largest-file analyzer
 - Duplicate file finder
 - Project artifact purger (node_modules, target, build, Pods, DerivedData, caches, …)

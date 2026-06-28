@@ -47,25 +47,25 @@ git clone https://github.com/agungdp150/optimac.git
 cd optimac
 asdf install
 make build
-./bin/opti-mac
+./bin/optimac
 ```
 
 **Local install**
 
 ```bash
 make install
-opti-mac version
+optimac version
 ```
 
-This installs the binary to `~/.local/bin/opti-mac`.
+This installs the binary to `~/.local/bin/optimac`.
 
 **Homebrew**
 
-A formula is available in [Formula/opti-mac.rb](./Formula/opti-mac.rb). Tap this repository directly:
+A formula is available in [Formula/optimac.rb](./Formula/optimac.rb). Tap this repository directly:
 
 ```bash
 brew tap agungdp150/optimac https://github.com/agungdp150/optimac
-brew install opti-mac
+brew install optimac
 ```
 
 Do not use `agungdp150/tap` unless the dedicated `agungdp150/homebrew-tap` repository has been created and published.
@@ -74,17 +74,17 @@ Do not use `agungdp150/tap` unless the dedicated `agungdp150/homebrew-tap` repos
 
 OptiMac only writes to two locations in your home directory, so removing it is clean and predictable. Pick the step that matches how you installed it, then remove the data directories.
 
-> Optional: if you used trash-backed actions (`uninstall`, `browser`, or `clean --trash`) and want to recover anything first, run `opti-mac trash status` / `opti-mac restore <id>` before deleting `~/.opti-mac`.
+> Optional: if you used trash-backed actions (`uninstall`, `browser`, or `clean --trash`) and want to recover anything first, run `optimac trash status` / `optimac restore <id>` before deleting `~/.optimac`.
 
 **1. Remove the binary**
 
 ```bash
 # Homebrew install
-brew uninstall opti-mac
+brew uninstall optimac
 brew untap agungdp150/optimac    # optional: also remove the tap
 
 # make install
-rm -f ~/.local/bin/opti-mac
+rm -f ~/.local/bin/optimac
 
 # build from source
 rm -rf /path/to/optimac           # the cloned repo, including ./bin
@@ -93,8 +93,8 @@ rm -rf /path/to/optimac           # the cloned repo, including ./bin
 **2. Remove OptiMac data (config, trash, and operation log)**
 
 ```bash
-rm -rf ~/.config/opti-mac         # configuration (config.json); or $XDG_CONFIG_HOME/opti-mac if set
-rm -rf ~/.opti-mac                # managed trash + operation log
+rm -rf ~/.config/optimac         # configuration (config.json); or $XDG_CONFIG_HOME/optimac if set
+rm -rf ~/.optimac                # managed trash + operation log
 ```
 
 That's everything OptiMac creates. It does not install LaunchAgents, login items, or system files, and it never writes outside your home directory.
@@ -102,38 +102,38 @@ That's everything OptiMac creates. It does not install LaunchAgents, login items
 To verify nothing is left behind:
 
 ```bash
-ls ~/.config/opti-mac ~/.opti-mac 2>/dev/null   # should print nothing
-command -v opti-mac                              # should print nothing
+ls ~/.config/optimac ~/.optimac 2>/dev/null   # should print nothing
+command -v optimac                              # should print nothing
 ```
 
 ## Run
 
 ```bash
-opti-mac                         # Interactive terminal menu
-opti-mac scan                    # Safe summary scan
-opti-mac clean                   # Preview cleanup targets
-opti-mac clean --execute         # Clean approved user targets
-opti-mac clean --execute --sudo  # Include sudo-only system targets
-opti-mac analyze ~/Downloads     # Find large files
-opti-mac duplicates ~/Downloads  # Find exact and similar-name duplicates
-opti-mac apps                    # List installed apps by size
-opti-mac uninstall "App Name"    # Preview app removal and leftovers
-opti-mac optimize --ram --sudo   # Purge inactive memory
-opti-mac status                  # System health dashboard
-opti-mac doctor                  # Read-only security/capacity check
+optimac                         # Interactive terminal menu
+optimac scan                    # Safe summary scan
+optimac clean                   # Preview cleanup targets
+optimac clean --execute         # Clean approved user targets
+optimac clean --execute --sudo  # Include sudo-only system targets
+optimac analyze ~/Downloads     # Find large files
+optimac duplicates ~/Downloads  # Find exact and similar-name duplicates
+optimac apps                    # List installed apps by size
+optimac uninstall "App Name"    # Preview app removal and leftovers
+optimac optimize --ram --sudo   # Purge inactive memory
+optimac status                  # System health dashboard
+optimac doctor                  # Read-only security/capacity check
 ```
 
 ## Preview Safely
 
 ```bash
-opti-mac clean
-opti-mac clean --json
-opti-mac analyze ~/Downloads --limit 50 --min-size 100MB
-opti-mac duplicates ~/Downloads --min-size 1B
-opti-mac uninstall "App Name"
-opti-mac browser chrome
-opti-mac artifacts . --min-size 10MB
-opti-mac log
+optimac clean
+optimac clean --json
+optimac analyze ~/Downloads --limit 50 --min-size 100MB
+optimac duplicates ~/Downloads --min-size 1B
+optimac uninstall "App Name"
+optimac browser chrome
+optimac artifacts . --min-size 10MB
+optimac log
 ```
 
 Commands that remove data require `--execute` or a TUI confirmation. Large-file and duplicate deletion in the TUI moves selected files to OptiMac trash by default.
@@ -154,16 +154,16 @@ OptiMac is a local system maintenance tool. Some commands can remove local files
 Trash-backed operations are stored under:
 
 ```text
-~/.opti-mac/trash
+~/.optimac/trash
 ```
 
 Restore or empty them with:
 
 ```bash
-opti-mac log
-opti-mac restore <operation-id>
-opti-mac trash status
-opti-mac trash empty
+optimac log
+optimac restore <operation-id>
+optimac trash status
+optimac trash empty
 ```
 
 Security policy and contribution guardrails live in [SECURITY.md](./SECURITY.md) and [CONTRIBUTING.md](./CONTRIBUTING.md). Pull requests run `make security` to block unapproved external links, remote shell execution patterns, hidden network clients, credential-capture markup, and unreviewed admin prompts.
@@ -171,7 +171,7 @@ Security policy and contribution guardrails live in [SECURITY.md](./SECURITY.md)
 ## Interactive TUI
 
 ```bash
-opti-mac
+optimac
 ```
 
 Common shortcuts:
@@ -216,7 +216,7 @@ d       delete selected files
 ### Deep Cleanup
 
 ```bash
-$ opti-mac clean
+$ optimac clean
 
 Dry run. Re-run with --execute to delete these files.
 Checked targets:
@@ -230,13 +230,13 @@ Potential cleanup: 10.8 GB across 253 items
 For deeper cleanup:
 
 ```bash
-opti-mac clean --execute --sudo
+optimac clean --execute --sudo
 ```
 
 ### Disk Analyzer
 
 ```bash
-$ opti-mac analyze ~/Downloads --limit 10 --min-size 100MB
+$ optimac analyze ~/Downloads --limit 10 --min-size 100MB
 
     3.5 GB  /Users/you/Downloads/screen-recording.mov
     1.8 GB  /Users/you/Downloads/database-backup.dump
@@ -248,7 +248,7 @@ The TUI provides a richer category-first view with selection and trash-backed de
 ### Duplicate Review
 
 ```bash
-$ opti-mac duplicates ~/Downloads
+$ optimac duplicates ~/Downloads
 
 2.4 GB exact duplicate in 2 files
   /Users/you/Downloads/archive.zip
@@ -265,7 +265,7 @@ The interactive duplicate view lets you choose exactly which files to delete.
 ### Smart App Uninstaller
 
 ```bash
-$ opti-mac apps
+$ optimac apps
 
     4.2 GB  Xcode                            com.apple.dt.Xcode
     1.8 GB  Docker                           com.docker.docker
@@ -275,14 +275,14 @@ $ opti-mac apps
 Preview removal first:
 
 ```bash
-opti-mac uninstall "Docker"
-opti-mac uninstall "Docker" --execute
+optimac uninstall "Docker"
+optimac uninstall "Docker" --execute
 ```
 
 ### Live System Status
 
 ```bash
-$ opti-mac status
+$ optimac status
 
 Status  Health ● 91 All clear
 MacBook Air · M4 · 16.0 GB/460.4 GB · macOS 26.3.1 · up 3d 6h
@@ -304,13 +304,13 @@ In the live TUI dashboard, the cat changes pose on refresh.
 Most read-oriented commands support `--json`:
 
 ```bash
-opti-mac scan --json
-opti-mac clean --json
-opti-mac analyze ~/Downloads --json
-opti-mac duplicates ~/Downloads --json
-opti-mac apps --json
-opti-mac status --json
-opti-mac doctor --json
+optimac scan --json
+optimac clean --json
+optimac analyze ~/Downloads --json
+optimac duplicates ~/Downloads --json
+optimac apps --json
+optimac status --json
+optimac doctor --json
 ```
 
 ## Configuration
@@ -318,13 +318,13 @@ opti-mac doctor --json
 OptiMac reads:
 
 ```text
-~/.config/opti-mac/config.json
+~/.config/optimac/config.json
 ```
 
 Create a default config:
 
 ```bash
-opti-mac config init
+optimac config init
 ```
 
 Example:
@@ -349,7 +349,7 @@ Example:
 asdf install
 make test
 make build
-./bin/opti-mac version
+./bin/optimac version
 ```
 
 Useful targets:

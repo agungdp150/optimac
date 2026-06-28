@@ -105,7 +105,7 @@ func ScanOrphans() (OrphanReport, error) {
 	if len(report.Items) == 0 {
 		report.Notes = append(report.Notes, "No orphaned support data found.")
 	} else {
-		report.Notes = append(report.Notes, "Heuristic match — confirm the app is really gone before removing. Use 'opti-mac uninstall <app>' for installed apps.")
+		report.Notes = append(report.Notes, "Heuristic match — confirm the app is really gone before removing. Use 'optimac uninstall <app>' for installed apps.")
 	}
 	return report, nil
 }

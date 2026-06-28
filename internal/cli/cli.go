@@ -84,29 +84,29 @@ func printHelp(out io.Writer) {
 	fmt.Fprintln(out, `OptiMac - safe macOS cleanup and maintenance CLI
 
 Usage:
-  opti-mac                      Open the interactive terminal menu
-  opti-mac menu                 Open the interactive terminal menu
-  opti-mac scan                 Run a safe summary scan
-  opti-mac clean [--execute]    Deep clean caches, logs, temp, and dev files
-  opti-mac analyze [path]       Show largest files in a path
-  opti-mac duplicates [path]    Find duplicate files by SHA-256, any size
-  opti-mac artifacts [path]     Find regenerable build/dependency dirs
-  opti-mac apps                 List installed applications by size
-  opti-mac uninstall <app>      Remove an app and its leftover files
-  opti-mac browser [name]       Clear browser caches, history, and cookies
-  opti-mac updates              Show outdated Homebrew formulae and casks
-  opti-mac login [list]         List or toggle login items and launch agents
-  opti-mac threats              Scan for known adware/PUP signatures
-  opti-mac space                Find hidden space (snapshots, backups, caches)
-  opti-mac orphans              Find support data left by uninstalled apps
-  opti-mac doctor               Read-only system security/capacity check
-  opti-mac optimize --ram       Purge inactive memory
-  opti-mac status               Show system status
-  opti-mac log                  Show recorded cleanup operations
-  opti-mac restore <id>         Restore files from a cleanup operation
-  opti-mac trash empty          Permanently delete trashed files
-  opti-mac config [init|path]   Show or create the config file
-  opti-mac version              Print version
+  optimac                      Open the interactive terminal menu
+  optimac menu                 Open the interactive terminal menu
+  optimac scan                 Run a safe summary scan
+  optimac clean [--execute]    Deep clean caches, logs, temp, and dev files
+  optimac analyze [path]       Show largest files in a path
+  optimac duplicates [path]    Find duplicate files by SHA-256, any size
+  optimac artifacts [path]     Find regenerable build/dependency dirs
+  optimac apps                 List installed applications by size
+  optimac uninstall <app>      Remove an app and its leftover files
+  optimac browser [name]       Clear browser caches, history, and cookies
+  optimac updates              Show outdated Homebrew formulae and casks
+  optimac login [list]         List or toggle login items and launch agents
+  optimac threats              Scan for known adware/PUP signatures
+  optimac space                Find hidden space (snapshots, backups, caches)
+  optimac orphans              Find support data left by uninstalled apps
+  optimac doctor               Read-only system security/capacity check
+  optimac optimize --ram       Purge inactive memory
+  optimac status               Show system status
+  optimac log                  Show recorded cleanup operations
+  optimac restore <id>         Restore files from a cleanup operation
+  optimac trash empty          Permanently delete trashed files
+  optimac config [init|path]   Show or create the config file
+  optimac version              Print version
 
 Safety:
   Destructive commands preview by default. Add --execute only after reviewing the output.
@@ -366,7 +366,7 @@ func printRemovalSummary(out io.Writer, result opti.CleanResult) {
 	if result.Trashed {
 		fmt.Fprintf(out, "Moved %s across %d items to the trash\n", opti.FormatBytes(result.RemovedBytes), result.RemovedCount)
 		if result.OperationID != "" {
-			fmt.Fprintf(out, "Not freed yet — restore with 'opti-mac restore %s' or reclaim with 'opti-mac trash empty'\n", result.OperationID)
+			fmt.Fprintf(out, "Not freed yet — restore with 'optimac restore %s' or reclaim with 'optimac trash empty'\n", result.OperationID)
 		}
 		return
 	}
@@ -474,7 +474,7 @@ func runApps(args []string, out io.Writer) error {
 		}
 		fmt.Fprintf(out, "%10s  %-32s %s%s\n", opti.FormatBytes(app.Size), app.Name, app.BundleID, tag)
 	}
-	fmt.Fprintf(out, "\n%d applications. Remove one with: opti-mac uninstall \"<name>\"\n", len(apps))
+	fmt.Fprintf(out, "\n%d applications. Remove one with: optimac uninstall \"<name>\"\n", len(apps))
 	return nil
 }
 
@@ -487,7 +487,7 @@ func runUninstall(args []string, out io.Writer) error {
 		return err
 	}
 	if fs.NArg() == 0 {
-		return errors.New("usage: opti-mac uninstall <app name or path>")
+		return errors.New("usage: optimac uninstall <app name or path>")
 	}
 	plan, err := opti.PlanUninstall(fs.Arg(0))
 	if err != nil {
@@ -580,7 +580,7 @@ func runLogin(args []string, out io.Writer) error {
 		return nil
 	case "disable", "enable":
 		if fs.NArg() < 2 {
-			return fmt.Errorf("usage: opti-mac login %s <label>", action)
+			return fmt.Errorf("usage: optimac login %s <label>", action)
 		}
 		item, err := opti.FindLaunchItem(fs.Arg(1))
 		if err != nil {
@@ -711,7 +711,7 @@ func runRestore(args []string, out io.Writer) error {
 		return err
 	}
 	if fs.NArg() == 0 {
-		return errors.New("usage: opti-mac restore <operation id>  (see opti-mac log)")
+		return errors.New("usage: optimac restore <operation id>  (see optimac log)")
 	}
 	result, err := opti.RestoreOperation(fs.Arg(0))
 	if err != nil {
@@ -748,7 +748,7 @@ func runLog(args []string, out io.Writer) error {
 		op := ops[i]
 		fmt.Fprintf(out, "%s  %-18s  %d items  %s\n", op.ID, op.Command, len(op.Items), opti.FormatBytes(op.TotalBytes()))
 	}
-	fmt.Fprintln(out, "\nRestore with: opti-mac restore <id>")
+	fmt.Fprintln(out, "\nRestore with: optimac restore <id>")
 	return nil
 }
 

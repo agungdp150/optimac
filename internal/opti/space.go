@@ -50,10 +50,10 @@ type spaceProbe struct {
 func spaceProbes() []spaceProbe {
 	return []spaceProbe{
 		{"iOS device backups", "backup", "~/Library/Application Support/MobileSync/Backup", "iPhone/iPad backups", false, "review in Finder before removing"},
-		{"Xcode device support", "developer", "~/Library/Developer/Xcode/iOS DeviceSupport", "per-iOS-version debug symbols", true, "opti-mac clean --execute"},
+		{"Xcode device support", "developer", "~/Library/Developer/Xcode/iOS DeviceSupport", "per-iOS-version debug symbols", true, "optimac clean --execute"},
 		{"Xcode simulators", "developer", "~/Library/Developer/CoreSimulator/Devices", "simulator runtimes and data", true, "xcrun simctl delete unavailable"},
 		{"System Trash", "trash", "~/.Trash", "files in the macOS Trash", true, "empty Trash in Finder"},
-		{"Slack cache", "cache", "~/Library/Application Support/Slack/Cache", "Slack downloaded content", true, "opti-mac browser-style cleanup"},
+		{"Slack cache", "cache", "~/Library/Application Support/Slack/Cache", "Slack downloaded content", true, "optimac browser-style cleanup"},
 		{"Slack service worker", "cache", "~/Library/Application Support/Slack/Service Worker/CacheStorage", "Slack web cache", true, ""},
 		{"Discord cache", "cache", "~/Library/Application Support/discord/Cache", "Discord downloaded content", true, ""},
 		{"Teams cache", "cache", "~/Library/Application Support/Microsoft/Teams", "Teams cache and data", true, ""},
@@ -120,7 +120,7 @@ func ScanHiddenSpace() (SpaceReport, error) {
 				Size:      total,
 				Detail:    "files staged by earlier cleanups",
 				Removable: true,
-				Hint:      "opti-mac trash empty",
+				Hint:      "optimac trash empty",
 			})
 		}
 	}

@@ -6,13 +6,13 @@ import (
 )
 
 func TestElevatedCleanCommandPreservesOriginalUser(t *testing.T) {
-	command := elevatedCleanCommand("/Applications/Opti Mac/opti-mac", "luceid")
+	command := elevatedCleanCommand("/Applications/Opti Mac/optimac", "luceid")
 	for _, want := range []string{
 		"'env'",
 		"'OPTI_MAC_ELEVATED=1'",
 		"'OPTI_MAC_USER=luceid'",
 		"'SUDO_USER=luceid'",
-		"'/Applications/Opti Mac/opti-mac'",
+		"'/Applications/Opti Mac/optimac'",
 		"'clean'",
 		"'--execute'",
 		"'--sudo'",

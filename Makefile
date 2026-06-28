@@ -1,4 +1,4 @@
-BINARY := opti-mac
+BINARY := optimac
 VERSION ?= $(shell cat VERSION 2>/dev/null || echo dev)
 GOCACHE ?= $(CURDIR)/.cache/go-build
 GOPATH ?= $(CURDIR)/.cache/go-mod
@@ -6,7 +6,7 @@ GOPATH ?= $(CURDIR)/.cache/go-mod
 .PHONY: build test security release-check clean install
 
 build:
-	GOCACHE="$(GOCACHE)" GOPATH="$(GOPATH)" asdf exec go build -ldflags "-X main.version=$(VERSION)" -o bin/$(BINARY) ./cmd/opti-mac
+	GOCACHE="$(GOCACHE)" GOPATH="$(GOPATH)" asdf exec go build -ldflags "-X main.version=$(VERSION)" -o bin/$(BINARY) ./cmd/optimac
 
 test:
 	GOCACHE="$(GOCACHE)" GOPATH="$(GOPATH)" asdf exec go test ./...

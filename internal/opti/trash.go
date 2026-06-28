@@ -9,14 +9,14 @@ import (
 	"time"
 )
 
-// OptiMacHome returns ~/.opti-mac, where the managed trash and operation log
+// OptiMacHome returns ~/.optimac, where the managed trash and operation log
 // live. The directory is created on demand.
 func OptiMacHome() (string, error) {
 	home, err := HomeDir()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(home, ".opti-mac"), nil
+	return filepath.Join(home, ".optimac"), nil
 }
 
 func trashRoot() (string, error) {
