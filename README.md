@@ -61,7 +61,14 @@ This installs the binary to `~/.local/bin/opti-mac`.
 
 **Homebrew**
 
-A formula is available at [packaging/homebrew/opti-mac.rb](./packaging/homebrew/opti-mac.rb). After it is published to `agungdp150/homebrew-tap` as `Formula/opti-mac.rb`:
+A formula is available in [Formula/opti-mac.rb](./Formula/opti-mac.rb). Until the dedicated `agungdp150/homebrew-tap` repository is published, tap this repository directly:
+
+```bash
+brew tap agungdp150/optimac https://github.com/agungdp150/optimac
+brew install opti-mac
+```
+
+After the dedicated tap repository exists, this shorter command will also work:
 
 ```bash
 brew install agungdp150/tap/opti-mac
