@@ -61,18 +61,14 @@ This installs the binary to `~/.local/bin/opti-mac`.
 
 **Homebrew**
 
-A formula is available in [Formula/opti-mac.rb](./Formula/opti-mac.rb). Until the dedicated `agungdp150/homebrew-tap` repository is published, tap this repository directly:
+A formula is available in [Formula/opti-mac.rb](./Formula/opti-mac.rb). Tap this repository directly:
 
 ```bash
 brew tap agungdp150/optimac https://github.com/agungdp150/optimac
 brew install opti-mac
 ```
 
-After the dedicated tap repository exists, this shorter command will also work:
-
-```bash
-brew install agungdp150/tap/opti-mac
-```
+Do not use `agungdp150/tap` unless the dedicated `agungdp150/homebrew-tap` repository has been created and published.
 
 ## Uninstall Completely
 
@@ -85,7 +81,7 @@ OptiMac only writes to two locations in your home directory, so removing it is c
 ```bash
 # Homebrew install
 brew uninstall opti-mac
-brew untap agungdp150/tap        # optional: also remove the tap
+brew untap agungdp150/optimac    # optional: also remove the tap
 
 # make install
 rm -f ~/.local/bin/opti-mac
@@ -379,6 +375,7 @@ make build VERSION=0.1.1
 4. Tag the release, for example `v0.1.1`.
 5. Publish the archive and checksum.
 6. Update the Homebrew formula URL and SHA256.
+7. Run `make release-check` before publishing install instructions.
 
 ## Contributing
 
