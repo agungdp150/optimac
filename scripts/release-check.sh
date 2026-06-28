@@ -3,6 +3,8 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 README="$ROOT/README.md"
+VERSION_FILE="$ROOT/VERSION"
+MAIN="$ROOT/cmd/optimac/main.go"
 FORMULA="$ROOT/Formula/optimac.rb"
 PACKAGED_FORMULA="$ROOT/packaging/homebrew/optimac.rb"
 
@@ -19,6 +21,17 @@ extract_value() {
 
 [[ -f "$FORMULA" ]] || fail "missing Formula/optimac.rb"
 [[ -f "$PACKAGED_FORMULA" ]] || fail "missing packaging/homebrew/optimac.rb"
+[[ -f "$VERSION_FILE" ]] || fail "missing VERSION"
+[[ -f "$MAIN" ]] || fail "missing cmd/optimac/main.go"
+
+version="$(tr -d '[:space:]' < "$VERSION_FILE")"
+[[ -n "$version" ]] || fail "VERSION is empty"
+
+grep -q "version-${version}-" "$README" ||
+  fail "README version badge does not match VERSION ($version)"
+
+grep -q "var version = \"$version\"" "$MAIN" ||
+  fail "cmd/optimac/main.go default version does not match VERSION ($version)"
 
 root_url="$(extract_value url "$FORMULA")"
 packaged_url="$(extract_value url "$PACKAGED_FORMULA")"

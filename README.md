@@ -6,7 +6,7 @@
 
 <p align="center">
   <a href="https://github.com/agungdp150/optimac/stargazers"><img src="https://img.shields.io/github/stars/agungdp150/optimac?style=flat-square" alt="Stars"></a>
-  <a href="./VERSION"><img src="https://img.shields.io/badge/version-0.1.0-38BDF8?style=flat-square" alt="Version"></a>
+  <a href="./VERSION"><img src="https://img.shields.io/badge/version-0.1.2-38BDF8?style=flat-square" alt="Version"></a>
   <a href="./LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square" alt="License"></a>
   <a href="#requirements"><img src="https://img.shields.io/badge/platform-macOS-lightgrey?style=flat-square" alt="Platform"></a>
   <a href="./CHANGELOG.md"><img src="https://img.shields.io/badge/changelog-keep_a_log-5EEAD4?style=flat-square" alt="Changelog"></a>
@@ -364,7 +364,7 @@ make clean
 Version is tracked in [VERSION](./VERSION) and injected at build time:
 
 ```bash
-make build VERSION=0.1.1
+make build VERSION=0.1.2
 ```
 
 ## Release Checklist
@@ -372,7 +372,7 @@ make build VERSION=0.1.1
 1. Update [VERSION](./VERSION).
 2. Add a new entry in [CHANGELOG.md](./CHANGELOG.md).
 3. Run `make test` and `make build`.
-4. Tag the release, for example `v0.1.1`.
+4. Tag the release, for example `v0.1.2`.
 5. Publish the archive and checksum.
 6. Update the Homebrew formula URL and SHA256.
 7. Run `make release-check` before publishing install instructions.

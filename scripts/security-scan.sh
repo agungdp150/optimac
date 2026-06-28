@@ -22,7 +22,7 @@ tracked_files() {
 
 is_allowed_url() {
   case "$1" in
-    https://github.com/luceid/optimac|https://github.com/luceid/optimac/*|https://img.shields.io/*|https://www.w3.org/*)
+    https://github.com/agungdp150/optimac|https://github.com/agungdp150/optimac/*|https://github.com/agungdp150/homebrew-tap|https://img.shields.io/*|https://www.w3.org/*)
       return 0
       ;;
     *)

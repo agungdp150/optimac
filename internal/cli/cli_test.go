@@ -18,10 +18,10 @@ func TestHelp(t *testing.T) {
 
 func TestVersion(t *testing.T) {
 	var out bytes.Buffer
-	if err := run([]string{"version"}, "0.1.0", &out); err != nil {
+	if err := run([]string{"version"}, "0.1.2", &out); err != nil {
 		t.Fatal(err)
 	}
-	if strings.TrimSpace(out.String()) != "0.1.0" {
+	if strings.TrimSpace(out.String()) != "0.1.2" {
 		t.Fatalf("expected version output, got %q", out.String())
 	}
 }

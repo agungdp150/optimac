@@ -40,7 +40,7 @@
     <circle cx="158" cy="104" r="8" fill="#FBBF24"/>
     <circle cx="186" cy="104" r="8" fill="#34D399"/>
     <text x="236" y="112" fill="#F8FAFC" font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" font-size="24" font-weight="900">optimac</text>
-    <text x="1064" y="110" fill="#94A3B8" font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" font-size="17" font-weight="800">v0.1.0</text>
+    <text x="1064" y="110" fill="#94A3B8" font-family="ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace" font-size="17" font-weight="800">v0.1.2</text>
   </g>
 
   <g filter="url(#catShadow)">

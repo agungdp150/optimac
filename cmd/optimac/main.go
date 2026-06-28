@@ -7,7 +7,7 @@ import (
 	"github.com/agungdp150/optimac/internal/cli"
 )
 
-var version = "0.1.0"
+var version = "0.1.2"
 
 func main() {
 	if err := cli.Run(os.Args[1:], version); err != nil {
