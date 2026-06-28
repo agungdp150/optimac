@@ -100,6 +100,32 @@ func TestDeleteAnalyzeItemsRejectsPathOutsideAllowedRoots(t *testing.T) {
 	}
 }
 
+func TestDeleteAnalyzeItemsRejectsShellThemePaths(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", "")
+
+	themeCache := filepath.Join(home, ".cache", "starship")
+	if err := os.MkdirAll(themeCache, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(themeCache, "prompt-theme.json")
+	if err := os.WriteFile(path, []byte("theme"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	result := DeleteAnalyzeItems([]AnalyzeItem{{Path: path}}, []string{filepath.Join(home, ".cache")}, CleanOptions{NoTrash: true})
+	if result.RemovedCount != 0 {
+		t.Fatalf("expected no removed files, got %d", result.RemovedCount)
+	}
+	if len(result.Failures) != 1 {
+		t.Fatalf("expected 1 failure, got %d", len(result.Failures))
+	}
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("expected shell theme file to remain, stat err=%v", err)
+	}
+}
+
 func TestAnalyzeDiskLocationsReturnsQuickly(t *testing.T) {
 	start := time.Now()
 	locations, err := AnalyzeDiskLocations()

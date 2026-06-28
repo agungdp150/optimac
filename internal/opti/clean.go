@@ -46,8 +46,18 @@ func defaultCleanTargets() []cleanTarget {
 		{Path: "~/Library/Application Support/*/Crashpad/completed", Kind: "app crash dump", Category: "apps", Deep: true},
 		{Path: "~/Library/Application Support/Caches", Kind: "app cache", Category: "apps", Deep: true},
 
-		// Developer toolchain caches.
-		{Path: "~/.cache", Kind: "user cache", Category: "developer", Deep: true},
+		// Developer toolchain caches. Keep this list explicit; ~/.cache also
+		// commonly stores shell prompt themes and other user personalization.
+		{Path: "~/.cache/go-build", Kind: "go build cache", Category: "developer", Deep: true},
+		{Path: "~/.cache/pip", Kind: "pip cache", Category: "developer", Deep: true},
+		{Path: "~/.cache/pypoetry/cache", Kind: "poetry cache", Category: "developer", Deep: true},
+		{Path: "~/.cache/pypoetry/artifacts", Kind: "poetry cache", Category: "developer", Deep: true},
+		{Path: "~/.cache/uv", Kind: "uv cache", Category: "developer", Deep: true},
+		{Path: "~/.cache/yarn", Kind: "yarn cache", Category: "developer", Deep: true},
+		{Path: "~/.cache/node-gyp", Kind: "node-gyp cache", Category: "developer", Deep: true},
+		{Path: "~/.cache/deno", Kind: "deno cache", Category: "developer", Deep: true},
+		{Path: "~/.cache/bun", Kind: "bun cache", Category: "developer", Deep: true},
+		{Path: "~/.cache/pre-commit", Kind: "pre-commit cache", Category: "developer", Deep: true},
 		{Path: "~/Library/Developer/Xcode/DerivedData", Kind: "derived data", Category: "developer", Deep: true},
 		{Path: "~/Library/Developer/Xcode/Archives", Kind: "xcode archive", Category: "developer", Deep: true},
 		{Path: "~/Library/Developer/Xcode/iOS DeviceSupport", Kind: "device support", Category: "developer", Deep: true},
@@ -158,7 +168,7 @@ func scanCleanable(includeSudo bool, cfg Config, minAge time.Duration) (CleanRes
 			dirPaths := make([]string, 0)
 			for _, entry := range entries {
 				path := filepath.Join(root, entry.Name())
-				if cfg.excluded(path) {
+				if cfg.excluded(path) || isProtectedPath(path) {
 					continue
 				}
 				info, err := entry.Info()

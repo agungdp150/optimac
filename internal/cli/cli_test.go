@@ -2,8 +2,12 @@ package cli
 
 import (
 	"bytes"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/agungdp150/optimac/internal/opti"
 )
 
 func TestHelp(t *testing.T) {
@@ -52,5 +56,67 @@ func TestCleanSudoRequiresExecute(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "--sudo") {
 		t.Fatalf("expected sudo error, got %v", err)
+	}
+}
+
+func TestCleanExecuteUsesTrashByDefault(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", "")
+
+	cacheDir := filepath.Join(home, "Library", "Caches", "optimac-test")
+	if err := os.MkdirAll(cacheDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cacheFile := filepath.Join(cacheDir, "blob")
+	if err := os.WriteFile(cacheFile, []byte("cache"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var out bytes.Buffer
+	if err := run([]string{"clean", "--execute"}, "test", &out); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "Moved") || !strings.Contains(out.String(), "restore") {
+		t.Fatalf("expected trash-backed clean output, got %q", out.String())
+	}
+	if _, err := os.Stat(cacheDir); !os.IsNotExist(err) {
+		t.Fatalf("expected cache dir moved out of place, stat err=%v", err)
+	}
+	ops, err := opti.ListOperations()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ops) != 1 {
+		t.Fatalf("expected one restorable operation, got %d", len(ops))
+	}
+}
+
+func TestCleanNoTrashDeletesPermanently(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", "")
+
+	cacheDir := filepath.Join(home, "Library", "Caches", "optimac-test")
+	if err := os.MkdirAll(cacheDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(cacheDir, "blob"), []byte("cache"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var out bytes.Buffer
+	if err := run([]string{"clean", "--execute", "--no-trash"}, "test", &out); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "Freed") {
+		t.Fatalf("expected permanent clean output, got %q", out.String())
+	}
+	ops, err := opti.ListOperations()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ops) != 0 {
+		t.Fatalf("expected no restorable operation, got %d", len(ops))
 	}
 }

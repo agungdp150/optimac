@@ -72,7 +72,8 @@ func TrashSafe(path string, allowedRoots []string, session *TrashSession, size i
 }
 
 func isProtectedPath(path string) bool {
-	protected := map[string]bool{
+	clean := filepath.Clean(path)
+	protectedExact := map[string]bool{
 		"/":             true,
 		"/Applications": true,
 		"/Library":      true,
@@ -88,11 +89,51 @@ func isProtectedPath(path string) bool {
 	}
 	home, err := HomeDir()
 	if err == nil {
-		protected[home] = true
-		protected[filepath.Join(home, "Desktop")] = true
-		protected[filepath.Join(home, "Documents")] = true
-		protected[filepath.Join(home, "Downloads")] = true
-		protected[filepath.Join(home, ".ssh")] = true
+		for _, path := range []string{
+			home,
+			filepath.Join(home, "Desktop"),
+			filepath.Join(home, "Documents"),
+			filepath.Join(home, "Downloads"),
+			filepath.Join(home, ".zlogin"),
+			filepath.Join(home, ".zlogout"),
+			filepath.Join(home, ".zprofile"),
+			filepath.Join(home, ".zshenv"),
+			filepath.Join(home, ".zshrc"),
+			filepath.Join(home, ".p10k.zsh"),
+			filepath.Join(home, ".config", "starship.toml"),
+			filepath.Join(home, ".zcompdump"),
+		} {
+			protectedExact[path] = true
+		}
+		for _, path := range []string{
+			filepath.Join(home, ".ssh"),
+			filepath.Join(home, ".zsh"),
+			filepath.Join(home, ".oh-my-zsh"),
+			filepath.Join(home, ".zprezto"),
+			filepath.Join(home, ".zim"),
+			filepath.Join(home, ".zinit"),
+			filepath.Join(home, ".antigen"),
+			filepath.Join(home, ".antidote"),
+			filepath.Join(home, ".poshthemes"),
+			filepath.Join(home, ".config", "zsh"),
+			filepath.Join(home, ".config", "oh-my-posh"),
+			filepath.Join(home, ".config", "starship"),
+			filepath.Join(home, ".cache", "oh-my-zsh"),
+			filepath.Join(home, ".cache", "starship"),
+			filepath.Join(home, ".cache", "p10k"),
+			filepath.Join(home, ".cache", "powerlevel10k"),
+			filepath.Join(home, ".cache", "zsh"),
+			filepath.Join(home, ".cache", "zinit"),
+			filepath.Join(home, ".cache", "antidote"),
+			filepath.Join(home, ".cache", "antigen"),
+			filepath.Join(home, ".local", "share", "zinit"),
+			filepath.Join(home, ".local", "share", "oh-my-zsh"),
+			filepath.Join(home, ".local", "share", "zsh"),
+		} {
+			if clean == path || hasPathPrefix(clean, path) {
+				return true
+			}
+		}
 	}
-	return protected[filepath.Clean(path)]
+	return protectedExact[clean]
 }

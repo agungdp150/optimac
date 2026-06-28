@@ -110,9 +110,8 @@ Usage:
 
 Safety:
   Destructive commands preview by default. Add --execute only after reviewing the output.
-  clean deletes regenerable caches permanently so space is freed immediately; pass
-  clean --trash to keep a restore point instead. uninstall/browser move to the
-  trash by default and can be undone with 'restore'.
+  clean, uninstall, browser, and artifacts move files to OptiMac trash by default;
+  use --no-trash only when you intentionally want permanent deletion.
   Use clean --execute --sudo only when normal cleanup reports permission errors.`)
 }
 
@@ -154,11 +153,15 @@ func runClean(args []string, out io.Writer) error {
 	fs := flag.NewFlagSet("clean", flag.ContinueOnError)
 	execute := fs.Bool("execute", false, "delete files")
 	sudo := fs.Bool("sudo", false, "re-run cleanup through sudo")
-	trash := fs.Bool("trash", false, "keep a restore point by moving files to the OptiMac trash instead of deleting (caches regenerate, so clean deletes by default)")
+	trash := fs.Bool("trash", false, "keep a restore point by moving files to the OptiMac trash (default)")
+	noTrash := fs.Bool("no-trash", false, "delete permanently instead of moving to trash")
 	olderThan := fs.String("older-than", "", "only clean items not modified within this window, e.g. 7d, 48h")
 	jsonOut := fs.Bool("json", false, "print JSON")
 	if err := fs.Parse(args); err != nil {
 		return err
+	}
+	if *trash && *noTrash {
+		return errors.New("--trash and --no-trash cannot be used together")
 	}
 	minAge, err := parseAge(*olderThan)
 	if err != nil {
@@ -175,7 +178,7 @@ func runClean(args []string, out io.Writer) error {
 			return nil
 		}
 	}
-	result, err := opti.Clean(opti.CleanOptions{Execute: *execute, NoTrash: !*trash, MinAge: minAge})
+	result, err := opti.Clean(opti.CleanOptions{Execute: *execute, NoTrash: *noTrash, MinAge: minAge})
 	if err != nil {
 		return err
 	}
@@ -183,7 +186,7 @@ func runClean(args []string, out io.Writer) error {
 		return writeJSON(out, result)
 	}
 	if !*execute {
-		fmt.Fprintln(out, "Dry run. Re-run with --execute to delete these files.")
+		fmt.Fprintln(out, "Dry run. Re-run with --execute to move these files to OptiMac trash.")
 	}
 	printCleanTargets(out, result.Targets)
 	for _, item := range result.Items {

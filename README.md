@@ -74,7 +74,7 @@ Do not use `agungdp150/tap` unless the dedicated `agungdp150/homebrew-tap` repos
 
 OptiMac only writes to two locations in your home directory, so removing it is clean and predictable. Pick the step that matches how you installed it, then remove the data directories.
 
-> Optional: if you used trash-backed actions (`uninstall`, `browser`, or `clean --trash`) and want to recover anything first, run `optimac trash status` / `optimac restore <id>` before deleting `~/.optimac`.
+> Optional: if you used trash-backed actions and want to recover anything first, run `optimac trash status` / `optimac restore <id>` before deleting `~/.optimac`.
 
 **1. Remove the binary**
 
@@ -112,7 +112,7 @@ command -v optimac                              # should print nothing
 optimac                         # Interactive terminal menu
 optimac scan                    # Safe summary scan
 optimac clean                   # Preview cleanup targets
-optimac clean --execute         # Clean approved user targets
+optimac clean --execute         # Move approved user targets to OptiMac trash
 optimac clean --execute --sudo  # Include sudo-only system targets
 optimac analyze ~/Downloads     # Find large files
 optimac duplicates ~/Downloads  # Find exact and similar-name duplicates
@@ -144,8 +144,8 @@ OptiMac is a local system maintenance tool. Some commands can remove local files
 
 | Area | Default behavior |
 | --- | --- |
-| `clean` | Dry run unless `--execute` is passed. Regenerable caches are deleted permanently by default so space is actually freed. Use `--trash` to keep a restore point. |
-| `clean --sudo` | Requires `--execute` and uses macOS admin authorization for sudo-only cache/temp targets. |
+| `clean` | Dry run unless `--execute` is passed. Executed cleanup moves files to OptiMac trash by default; use `--no-trash` only for permanent deletion. |
+| `clean --sudo` | Requires `--execute`, uses macOS admin authorization for sudo-only cache/temp targets, and remains trash-backed by default. |
 | Large files | TUI deletion is selection-based and trash-backed. |
 | Duplicates | TUI deletion is per-file selection-based, keeps at least one file per group, and supports trash/permanent mode. |
 | `uninstall`, `browser`, `artifacts` | Trash-backed by default unless `--no-trash` is passed. |
@@ -218,7 +218,7 @@ d       delete selected files
 ```bash
 $ optimac clean
 
-Dry run. Re-run with --execute to delete these files.
+Dry run. Re-run with --execute to move these files to OptiMac trash.
 Checked targets:
   cache              checked, 120 items, 2.4 GB  ~/Library/Caches
   logs               checked, 44 items, 380 MB   ~/Library/Logs

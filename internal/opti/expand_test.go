@@ -51,6 +51,107 @@ func TestCleanMinAgeFiltersRecentItems(t *testing.T) {
 	}
 }
 
+func TestDefaultCleanTargetsSkipShellThemeCache(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	themeCache := filepath.Join(home, ".cache", "starship")
+	if err := os.MkdirAll(themeCache, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	themeFile := filepath.Join(themeCache, "prompt-theme.json")
+	if err := os.WriteFile(themeFile, []byte("theme"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	goCache := filepath.Join(home, ".cache", "go-build")
+	if err := os.MkdirAll(goCache, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	goCacheFile := filepath.Join(goCache, "blob")
+	if err := os.WriteFile(goCacheFile, []byte("cache"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := scanCleanable(false, DefaultConfig(), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var sawGoCache bool
+	for _, item := range result.Items {
+		if hasPathPrefix(item.Path, themeCache) {
+			t.Fatalf("shell theme cache should not be cleanable: %s", item.Path)
+		}
+		if item.Path == goCacheFile {
+			sawGoCache = true
+		}
+	}
+	if !sawGoCache {
+		t.Fatal("expected explicit developer cache to remain cleanable")
+	}
+}
+
+func TestProtectedShellThemeCacheCannotBeRemoved(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	themeCache := filepath.Join(home, ".cache", "starship")
+	if err := os.MkdirAll(themeCache, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := RemoveAllSafe(themeCache, []string{filepath.Join(home, ".cache")}); err == nil {
+		t.Fatal("expected shell theme cache removal to be refused")
+	}
+	if _, err := os.Stat(themeCache); err != nil {
+		t.Fatalf("theme cache should still exist: %v", err)
+	}
+}
+
+func TestBroadCustomCacheTargetSkipsShellThemeCache(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", "")
+
+	themeCache := filepath.Join(home, ".cache", "starship")
+	if err := os.MkdirAll(themeCache, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	themeFile := filepath.Join(themeCache, "prompt-theme.json")
+	if err := os.WriteFile(themeFile, []byte("theme"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	scratch := filepath.Join(home, ".cache", "scratch")
+	if err := os.MkdirAll(scratch, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(scratch, "blob"), []byte("cache"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := Config{UseTrash: true, ExtraCleanTargets: []ConfigTarget{{Path: "~/.cache", Kind: "custom cache", Category: "custom"}}}
+	result, err := scanCleanable(false, cfg, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, item := range result.Items {
+		if hasPathPrefix(item.Path, themeCache) {
+			t.Fatalf("shell theme cache from broad custom target should not be cleanable: %s", item.Path)
+		}
+	}
+
+	if _, err := SaveConfig(cfg); err != nil {
+		t.Fatal(err)
+	}
+	result, err = Clean(CleanOptions{Execute: true, NoTrash: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(themeFile); err != nil {
+		t.Fatalf("theme cache should survive broad custom clean: %v", err)
+	}
+}
+
 func TestCleanPermanentVsTrash(t *testing.T) {
 	setup := func(t *testing.T) (string, string) {
 		home := t.TempDir()
@@ -69,7 +170,7 @@ func TestCleanPermanentVsTrash(t *testing.T) {
 		return file, dir
 	}
 
-	t.Run("permanent default frees and keeps no restore point", func(t *testing.T) {
+	t.Run("NoTrash frees and keeps no restore point", func(t *testing.T) {
 		file, _ := setup(t)
 		result, err := Clean(CleanOptions{Execute: true, NoTrash: true})
 		if err != nil {
