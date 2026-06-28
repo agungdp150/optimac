@@ -459,6 +459,7 @@ func diskBar(pct float64, width int) string {
 }
 
 func (m model) renderConfirmLargeDelete() string {
+	contentWidth := responsiveContentWidth(m.width)
 	count := m.largeSelectionCount()
 	size := opti.FormatBytes(m.largeSelectionBytes())
 	content := title.Render("Delete Large Files") + "\n" +
@@ -466,15 +467,16 @@ func (m model) renderConfirmLargeDelete() string {
 		fmt.Sprintf("Trash %d selected file(s), reclaimable after emptying trash: %s?\n\n", count, size) +
 		okStyle.Render("y") + " trash    " + errStyle.Render("n") + " cancel\n\n" +
 		help.Render("esc: cancel  q: quit")
-	return frame(box.Render(content), m.width)
+	return frame(box.Width(contentWidth).Render(truncateLines(content, contentWidth)), m.width)
 }
 
 func (m model) renderConfirm() string {
+	contentWidth := responsiveContentWidth(m.width)
 	content := title.Render("Deep Clean") + "\n" +
 		warnBadge.Render("CONFIRM") + " " + subtle.Render("macOS will ask for an admin password.") + "\n\n" +
 		"This removes user cleanup targets plus sudo-only system caches and temp files.\n\n" +
 		"Run admin deep clean now?\n\n" +
 		okStyle.Render("y") + " yes    " + errStyle.Render("n") + " no\n\n" +
 		help.Render("esc: cancel  q: quit")
-	return frame(box.Render(content), m.width)
+	return frame(box.Width(contentWidth).Render(truncateLines(content, contentWidth)), m.width)
 }

@@ -23,14 +23,14 @@ func responsiveContentWidth(terminalWidth int) int {
 	if terminalWidth <= 0 {
 		return 88
 	}
-	return clamp(terminalWidth-4, 56, 220)
+	return clamp(terminalWidth-10, 30, 220)
 }
 
 func liveStatusContentWidth(terminalWidth int) int {
 	if terminalWidth <= 0 {
 		return 120
 	}
-	return clamp(terminalWidth-4, 64, 160)
+	return clamp(terminalWidth-10, 30, 160)
 }
 
 func clamp(value, min, max int) int {
@@ -66,7 +66,7 @@ func liveStatusPageSize(height int) int {
 	if height <= 0 {
 		return 20
 	}
-	size := height - 8
+	size := height - 10
 	if size < 10 {
 		return 10
 	}
@@ -80,7 +80,7 @@ func largeFilesPageSize(height int) int {
 	if height <= 0 {
 		return 18
 	}
-	size := height - 10
+	size := height - 12
 	if size < 8 {
 		return 8
 	}

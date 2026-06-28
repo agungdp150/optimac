@@ -621,6 +621,7 @@ func (m model) renderDuplicateFileRows(width, height int) string {
 }
 
 func (m model) renderConfirmDuplicateDelete() string {
+	contentWidth := responsiveContentWidth(m.width)
 	count := m.duplicateSelectionCount()
 	size := opti.FormatBytes(m.duplicateSelectionBytes())
 	modeLine := "Selected files will be moved to OptiMac trash."
@@ -636,7 +637,7 @@ func (m model) renderConfirmDuplicateDelete() string {
 		actionLine + "\n\n" +
 		button + "    " + errStyle.Render("n") + " cancel\n\n" +
 		help.Render("esc: cancel  q: quit")
-	return frame(box.Render(content), m.width)
+	return frame(box.Width(contentWidth).Render(truncateLines(content, contentWidth)), m.width)
 }
 
 func (m model) duplicatesSummary() string {
