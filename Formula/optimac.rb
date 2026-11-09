@@ -1,17 +1,15 @@
 class Optimac < Formula
-  desc "Safe macOS cleanup and maintenance CLI"
+  desc "Read-only macOS filesystem inspector with a responsive terminal UI"
   homepage "https://github.com/agungdp150/optimac"
-  url "https://github.com/agungdp150/optimac/archive/refs/tags/v0.1.2.tar.gz"
-  sha256 "af3e81ec284d66b6b62eefd1de01705fecfd1a6e80afcf3d779a828d07050273"
+  head "https://github.com/agungdp150/optimac.git", branch: "main"
   license "MIT"
-
-  depends_on "go" => :build
+  depends_on "rust" => :build
 
   def install
-    system "go", "build", "-ldflags", "-X main.version=#{version}", "-o", bin/"optimac", "./cmd/optimac"
+    system "cargo", "install", *std_cargo_args
   end
 
   test do
-    assert_match version.to_s, shell_output("#{bin}/optimac version")
+    assert_match "OptiMac", shell_output("#{bin}/optimac --help")
   end
 end

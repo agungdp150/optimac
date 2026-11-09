@@ -2,3 +2,6 @@ bin/
 dist/
 .cache/
 .DS_Store
+rust/target/
+
+/target/

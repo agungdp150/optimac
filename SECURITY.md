@@ -1,12 +1,12 @@
 # Security Policy
 
-OptiMac is a local macOS maintenance tool. Because it can remove files, request administrator authorization, and inspect local system state, security-sensitive changes need extra review.
+OptiMac is a local macOS maintenance tool. The current Rust edition is read-only; any future mutation or administrator capability requires security review.
 
 ## Supported Version
 
 | Version | Supported |
 | --- | --- |
-| `0.1.x` | Yes |
+| `0.2.x` | Yes |
 
 ## Reporting a Vulnerability
 
@@ -39,7 +39,7 @@ The repository includes `scripts/security-scan.sh` and a GitHub Actions workflow
 - Unapproved external URLs.
 - `curl` / `wget` pipe-to-shell patterns.
 - New shell execution through `sh -c`, `bash -c`, or `zsh -c`.
-- New Go network client APIs without review.
+- New Rust network client APIs without review.
 - Unreviewed AppleScript administrator prompts.
 - HTML/SVG/Markdown credential-capture patterns.
 

@@ -13,10 +13,12 @@ tracked_files() {
   find . \
     -path './.git' -prune -o \
     -path './.cache' -prune -o \
+    -path './target' -prune -o \
+    -path './rust/target' -prune -o \
     -path './bin' -prune -o \
     -path './vendor' -prune -o \
     -type f \
-    \( -name '*.go' -o -name '*.sh' -o -name '*.rb' -o -name '*.md' -o -name '*.yml' -o -name '*.yaml' -o -name '*.json' -o -name '*.svg' -o -name 'Makefile' \) \
+    \( -name '*.rs' -o -name '*.sh' -o -name '*.rb' -o -name '*.md' -o -name '*.yml' -o -name '*.yaml' -o -name '*.json' -o -name '*.svg' -o -name 'Makefile' \) \
     -print
 }
 
@@ -54,43 +56,43 @@ scan_suspicious_patterns() {
   local bad=0
   while IFS=: read -r file line text; do
     case "$file" in
-      ./internal/opti/threats.go|*_test.go)
+      *_test.go)
         continue
         ;;
     esac
     printf 'Suspicious download/execute pattern in %s:%s: %s\n' "$file" "$line" "$text" >&2
     bad=1
   done < <(grep -RInE '(curl|wget)[^|;&]*[|][[:space:]]*(sh|bash|zsh)|eval[[:space:]].*(curl|wget)|base64[[:space:]]+(-d|--decode).*[|][[:space:]]*(sh|bash|zsh)' . \
-    --exclude-dir=.git --exclude-dir=.cache --exclude-dir=bin --exclude-dir=vendor 2>/dev/null || true)
+    --exclude-dir=.git --exclude-dir=.cache --exclude-dir=bin --exclude-dir=vendor --exclude-dir=target 2>/dev/null || true)
 
   while IFS=: read -r file line text; do
     case "$file" in
-      ./internal/opti/admin.go|./internal/opti/optimize.go|./internal/opti/threats.go|./scripts/security-scan.sh)
+      ./scripts/security-scan.sh)
         continue
         ;;
     esac
     printf 'Unreviewed administrator AppleScript in %s:%s: %s\n' "$file" "$line" "$text" >&2
     bad=1
   done < <(grep -RInE 'with administrator privileges|osascript.*-e' . \
-    --include='*.go' --include='*.sh' --exclude='*_test.go' --exclude-dir=.git --exclude-dir=.cache --exclude-dir=bin --exclude-dir=vendor 2>/dev/null || true)
+    --include='*.rs' --include='*.sh' --exclude='*_test.go' --exclude-dir=.git --exclude-dir=.cache --exclude-dir=bin --exclude-dir=vendor --exclude-dir=target 2>/dev/null || true)
 
   while IFS=: read -r file line text; do
     printf 'Shell command execution needs security review in %s:%s: %s\n' "$file" "$line" "$text" >&2
     bad=1
-  done < <(grep -RInE 'exec\.Command(Context)?\([[:space:]]*"(sh|bash|zsh)"[[:space:]]*,[[:space:]]*"-c"|/bin/(sh|bash|zsh)[[:space:]]+-c' . \
-    --include='*.go' --include='*.sh' --exclude='*_test.go' --exclude-dir=.git --exclude-dir=.cache --exclude-dir=bin --exclude-dir=vendor 2>/dev/null || true)
+  done < <(grep -RInE 'Command::new\([[:space:]]*"(/bin/)?(sh|bash|zsh)"|/bin/(sh|bash|zsh)[[:space:]]+-c' . \
+    --include='*.rs' --include='*.sh' --exclude='*_test.go' --exclude-dir=.git --exclude-dir=.cache --exclude-dir=bin --exclude-dir=vendor --exclude-dir=target 2>/dev/null || true)
 
   while IFS=: read -r file line text; do
     printf 'Network client API needs security review in %s:%s: %s\n' "$file" "$line" "$text" >&2
     bad=1
-  done < <(grep -RInE '"net/http"|http\.(Get|Post|PostForm|NewRequest|DefaultClient)|websocket|grpc\.Dial' . \
-    --include='*.go' --exclude='*_test.go' --exclude-dir=.git --exclude-dir=.cache --exclude-dir=bin --exclude-dir=vendor 2>/dev/null || true)
+  done < <(grep -RInE 'reqwest::|ureq::|TcpStream::|UdpSocket::|websocket' . \
+    --include='*.rs' --exclude='*_test.go' --exclude-dir=.git --exclude-dir=.cache --exclude-dir=bin --exclude-dir=vendor --exclude-dir=target 2>/dev/null || true)
 
   while IFS=: read -r file line text; do
     printf 'Potential credential capture UI in %s:%s: %s\n' "$file" "$line" "$text" >&2
     bad=1
   done < <(grep -RInE '<form|type=["'\'']password["'\'']|name=["'\''](password|token|api[_-]?key)["'\'']' . \
-    --include='*.md' --include='*.html' --include='*.svg' --exclude-dir=.git --exclude-dir=.cache --exclude-dir=bin --exclude-dir=vendor 2>/dev/null || true)
+    --include='*.md' --include='*.html' --include='*.svg' --exclude-dir=.git --exclude-dir=.cache --exclude-dir=bin --exclude-dir=vendor --exclude-dir=target 2>/dev/null || true)
 
   [ "$bad" -eq 0 ] || fail "suspicious security-sensitive patterns found"
 }

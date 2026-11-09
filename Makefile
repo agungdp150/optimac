@@ -1,25 +1,22 @@
 BINARY := optimac
-VERSION ?= $(shell cat VERSION 2>/dev/null || echo dev)
-GOCACHE ?= $(CURDIR)/.cache/go-build
-GOPATH ?= $(CURDIR)/.cache/go-mod
-
-.PHONY: build test security release-check clean install
-
+.PHONY: build test security release-check clean install rust-build rust-test
 build:
-	GOCACHE="$(GOCACHE)" GOPATH="$(GOPATH)" asdf exec go build -ldflags "-X main.version=$(VERSION)" -o bin/$(BINARY) ./cmd/optimac
-
+	cargo build --release --locked
+	mkdir -p bin
+	cp target/release/$(BINARY) bin/$(BINARY)
 test:
-	GOCACHE="$(GOCACHE)" GOPATH="$(GOPATH)" asdf exec go test ./...
-
+	cargo fmt --check
+	cargo test --locked
+	cargo clippy --locked --all-targets -- -D warnings
 security:
 	./scripts/security-scan.sh
-
 release-check:
 	./scripts/release-check.sh
-
 clean:
-	rm -rf bin
-
+	cargo clean
+	rm -f bin/$(BINARY)
 install: build
 	install -d "$(HOME)/.local/bin"
 	install bin/$(BINARY) "$(HOME)/.local/bin/$(BINARY)"
+rust-build: build
+rust-test: test

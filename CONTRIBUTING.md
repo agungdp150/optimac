@@ -5,7 +5,7 @@ Thanks for helping improve OptiMac.
 ## Development
 
 ```bash
-asdf install
+cargo --version
 make security
 make test
 make build
@@ -30,7 +30,7 @@ The security scan is expected to fail if a PR adds:
 
 - Unapproved external URLs.
 - Remote downloads piped directly into a shell.
-- Hidden Go HTTP clients or websocket/grpc clients.
+- Hidden Rust HTTP clients or websocket/grpc clients.
 - `sh -c`, `bash -c`, or `zsh -c` execution.
 - Password/token input forms in Markdown, HTML, or SVG assets.
 - New administrator AppleScript prompts outside reviewed files.
