@@ -53,8 +53,25 @@ fn analysis_and_duplicates_use_disposable_fixtures() {
         }
         if command == "analyze" {
             assert!(text.contains("first") && text.contains("second"));
+            assert!(text.contains("12 B"));
         }
     }
     assert_eq!(std::fs::read(root.join("first")).unwrap(), b"same content");
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn artifact_sizes_sum_scanned_files() {
+    let root = std::env::temp_dir().join(format!("optimac-size-fixture-{}", std::process::id()));
+    std::fs::create_dir_all(root.join("node_modules/nested")).unwrap();
+    std::fs::write(root.join("node_modules/a"), vec![0; 1000]).unwrap();
+    std::fs::write(root.join("node_modules/nested/b"), vec![0; 1500]).unwrap();
+    let output = Command::new(env!("CARGO_BIN_EXE_optimac"))
+        .arg("artifacts")
+        .arg(&root)
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    assert!(String::from_utf8_lossy(&output.stdout).contains("2.50 KB"));
     std::fs::remove_dir_all(root).unwrap();
 }

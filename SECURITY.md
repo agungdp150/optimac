@@ -1,6 +1,6 @@
 # Security Policy
 
-OptiMac is a local macOS maintenance tool. The current Rust edition is read-only; any future mutation or administrator capability requires security review.
+OptiMac is a local macOS maintenance tool. The Rust menu supports reviewed recoverable moves. Mutation and administrator capabilities require security review; root elevation and permanent deletion are not supported.
 
 ## Supported Version
 

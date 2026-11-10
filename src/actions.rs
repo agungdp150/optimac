@@ -29,7 +29,7 @@ pub const COMMANDS: &[&str] = &[
 pub fn description(index: usize) -> &'static str {
     match index {
         1 | 2 => {
-            "Review conservative developer-cache candidates. Execution remains disabled until recoverable cleanup is ready."
+            "Review Documents, Programming, Browser, Media and other groups. Personal files must be individually selected before confirmation."
         }
         3 => "Largest regular files in the selected scope; logical sizes, read-only.",
         4 => "Compare same-sized local files byte for byte. Bounded scan; no automatic deletion.",
@@ -45,12 +45,13 @@ pub fn description(index: usize) -> &'static str {
         }
         11 => "Read FileVault, SIP, Gatekeeper and firewall status.",
         12 => {
-            "List installed application bundles. Removal remains disabled pending safe recovery support."
+            "Select an owned app bundle, review and confirm moving it to recovery. Personal data is preserved."
         }
         13 => {
             "Read memory statistics and swap usage. No purge, service restart or process termination."
         }
         14 => "Read macOS, CPU, memory and filesystem status.",
+        15 => "Select a Rust recovery record and restore without overwriting existing files.",
         _ => "Inspect metadata in the selected scope with cancellation and scan limits.",
     }
 }
@@ -71,7 +72,7 @@ fn safe_text(value: &str) -> String {
         })
         .collect()
 }
-fn command(program: &str, args: &[&str], cancel: &AtomicBool) -> io::Result<String> {
+pub(crate) fn command(program: &str, args: &[&str], cancel: &AtomicBool) -> io::Result<String> {
     use std::os::unix::process::CommandExt;
     if cancel.load(Ordering::Relaxed) {
         return Err(io::Error::other("Command cancelled"));
@@ -143,6 +144,13 @@ fn command(program: &str, args: &[&str], cancel: &AtomicBool) -> io::Result<Stri
         String::from_utf8_lossy(&output),
         String::from_utf8_lossy(&error)
     ));
+    if program == "/usr/sbin/lsof"
+        && status.code() == Some(1)
+        && output.is_empty()
+        && error.is_empty()
+    {
+        return Ok(String::new());
+    }
     if !status.success() {
         return Err(io::Error::other(format!(
             "{program} exited {status}: {text}"
@@ -313,13 +321,24 @@ fn equal(a: &Path, b: &Path, cancel: &AtomicBool, deadline: Instant) -> io::Resu
         }
     }
 }
+pub(crate) fn review_paths(root: &Path, cancel: &AtomicBool) -> io::Result<(Vec<PathBuf>, String)> {
+    let (entries, note) = walk(root, cancel)?;
+    Ok((
+        entries
+            .into_iter()
+            .filter(|e| !e.dir)
+            .map(|e| e.path)
+            .collect(),
+        note,
+    ))
+}
 pub fn run(index: usize, root: &Path, cancel: &AtomicBool) -> io::Result<String> {
     let h = home()?;
     match index {
         1 | 2 => {
-            let plan = crate::recovery::preview(&h, cancel)?;
+            let plan = crate::recovery::review_files(&h, root, cancel)?;
             Ok(format!(
-                "Cleanup preview only. Execution remains disabled pending safety validation.\n{}",
+                "Grouped file review only. Select individual files in the Run cleanup menu to perform recoverable moves.\n{}",
                 crate::recovery::describe(&plan)
             ))
         }
@@ -329,10 +348,14 @@ pub fn run(index: usize, root: &Path, cancel: &AtomicBool) -> io::Result<String>
                 entries.retain(|e| !e.dir);
                 entries.sort_by_key(|e| std::cmp::Reverse(e.size));
                 for e in entries.iter().take(200) {
-                    s.push_str(&format!("{:>12}  {:?}\n", e.size, e.path));
+                    s.push_str(&format!(
+                        "{:>12}  {:?}\n",
+                        crate::format_size(e.size),
+                        e.path
+                    ));
                 }
             } else if index == 5 {
-                s.push_str("Build/dependency candidates; manual review only:\n");
+                s.push_str("Build/dependency candidates; observed file totals (partial if entries were skipped or limits reached); manual review only:\n");
                 for e in entries
                     .iter()
                     .filter(|e| {
@@ -351,7 +374,15 @@ pub fn run(index: usize, root: &Path, cancel: &AtomicBool) -> io::Result<String>
                     })
                     .take(200)
                 {
-                    s.push_str(&format!("{:?}\n", e.path));
+                    let total = entries
+                        .iter()
+                        .filter(|file| !file.dir && file.path.starts_with(&e.path))
+                        .fold(0u64, |sum, file| sum.saturating_add(file.size));
+                    s.push_str(&format!(
+                        "{:>12}  {:?}\n",
+                        crate::format_size(total),
+                        e.path
+                    ));
                 }
             } else {
                 s.push_str("Exact byte comparisons at scan time; files may change afterward. Hard links excluded.\n");

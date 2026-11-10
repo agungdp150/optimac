@@ -1,3 +1,18 @@
+# Current implementation
+
+The menu now enables conservative developer-cache cleanup, owned app-bundle removal
+and Rust recovery restoration after exact-plan review and y/n confirmation.
+Filesystem moves use descriptor-relative exclusive rename on macOS, synced intent
+records, a recovery lock, identity checks and active-file detection. Files in use
+or with unknown status are skipped. No permanent deletion or copy/delete fallback.
+Only old regular files in explicit developer caches qualify; app removal preserves
+all personal/support data. Restore never overwrites. Tests cover real disposable
+moves, restore collisions, app roundtrip, changed identities and confirmation gates.
+Historical entries below describe earlier stages and are superseded by this section.
+CLI destructive flags, legacy restore import, browser cleanup and service toggles
+remain unsupported. Memory optimization is diagnostic only. This is conservative
+menu coverage, not full parity with every former Go behavior.
+
 # Recovery layer in progress
 
 Conservative cleanup preview now selects only owned, single-link regular files

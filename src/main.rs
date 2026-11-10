@@ -16,7 +16,7 @@ fn main() -> ExitCode {
     }
     if args == ["--help"] || args == ["help"] || args == ["-h"] {
         println!(
-            "OptiMac: read-only Rust edition\nUsage: optimac inspect <directory> | ui <directory>\nMetadata only; at most 100000 entries and 32 directory levels.\nLogical bytes are not reclaimable space. 30-second scan budget. Use local test directories.\nRead-only commands: analyze, duplicates, artifacts [directory]; clean (preview), apps (inventory), updates, login, threats, space, orphans (review), doctor, optimize (diagnostics), status."
+            "OptiMac: Rust edition (reviewed cleanup available in the menu)\nUsage: optimac inspect <directory> | ui <directory>\nMetadata only; at most 100000 entries and 32 directory levels.\nLogical bytes are not reclaimable space. 30-second scan budget. Use local test directories.\nRead-only commands: analyze, duplicates, artifacts [directory]; clean (preview), apps (inventory), updates, login, threats, space, orphans (review), doctor, optimize (diagnostics), status."
         );
         return ExitCode::SUCCESS;
     }
@@ -145,7 +145,16 @@ fn main() -> ExitCode {
     }
     match optimac::scan(Path::new(&args[1]), &cancel, 100_000) {
         Ok(report) => {
-            println!("{report:#?}");
+            println!(
+                "Files: {}\nLogical size: {} ({} bytes)\nSkipped: {}\nErrors: {}\nCancelled: {}\nBudget reached: {}",
+                report.files,
+                optimac::format_size(report.logical_bytes),
+                report.logical_bytes,
+                report.skipped,
+                report.errors,
+                report.cancelled,
+                report.limited
+            );
             if report.errors > 0 || report.limited || report.cancelled {
                 ExitCode::from(1)
             } else {

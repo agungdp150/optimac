@@ -2,8 +2,8 @@
 
 Breaking: removed Go source and toolchain. Default builds now produce the Rust
 `optimac` binary. Includes the cat-themed menu, metadata and large-file inspection, duplicate
-comparison, artifact discovery and read-only system diagnostics. Cleanup is preview
-only; uninstall and restore remain disabled. Existing configuration and recovery data are untouched.
+comparison, artifact discovery and read-only system diagnostics. The menu supports confirmed developer-cache cleanup, owned app-bundle removal
+and non-overwriting Rust recovery. CLI mutation flags remain disabled. Existing configuration and recovery data are untouched.
 The Rust UI supports resizing and cancellation; scans have bounded traversal.
 Homebrew uses HEAD until a Rust release archive/checksum is available.
 

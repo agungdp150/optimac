@@ -19,7 +19,7 @@ use std::{
 const ITEMS: &[&str] = &[
     "Inspect directory",
     "Deep Clean Preview",
-    "Clean (preview only)",
+    "Run cleanup",
     "Large Files",
     "Duplicates",
     "Project Artifacts",
@@ -29,9 +29,10 @@ const ITEMS: &[&str] = &[
     "Hidden Space",
     "Leftover data review",
     "Doctor",
-    "Apps (inventory only)",
+    "Uninstall apps",
     "Memory diagnostics",
     "System Status",
+    "Restore recovered items",
     "Quit",
 ];
 #[derive(PartialEq, Debug)]
@@ -44,6 +45,13 @@ struct App {
     selected: usize,
     screen: Screen,
     root: PathBuf,
+    plan: Arc<Mutex<Option<optimac::recovery::Plan>>>,
+    choices: Arc<Mutex<Vec<String>>>,
+    confirm: bool,
+    selected_files: std::collections::BTreeSet<PathBuf>,
+    file_group: Option<String>,
+    reviewed: Option<optimac::recovery::Plan>,
+    restore_id: Option<String>,
     output: Arc<Mutex<String>>,
     scroll: u16,
     job: Option<std::thread::JoinHandle<()>>,
@@ -56,6 +64,13 @@ impl App {
             selected: 0,
             screen: Screen::Menu,
             root,
+            plan: Arc::new(Mutex::new(None)),
+            choices: Arc::new(Mutex::new(Vec::new())),
+            confirm: false,
+            selected_files: std::collections::BTreeSet::new(),
+            file_group: None,
+            reviewed: None,
+            restore_id: None,
             output: Arc::new(Mutex::new(String::new())),
             scroll: 0,
             job: None,
@@ -67,11 +82,157 @@ impl App {
         if key == KeyCode::Char('q') {
             return true;
         }
+        if self.screen == Screen::Result && self.job.as_ref().is_none_or(|j| j.is_finished()) {
+            let home = std::env::var_os("HOME")
+                .map(PathBuf::from)
+                .unwrap_or_default();
+            if !self.confirm && self.selected == 2 && self.plan.lock().unwrap().is_some() {
+                let plan = self.plan.lock().unwrap();
+                let plan = plan.as_ref().unwrap();
+                let groups = optimac::recovery::categories(plan);
+                match key {
+                    KeyCode::Esc | KeyCode::Backspace => {
+                        if self.file_group.take().is_none() {
+                            self.screen = Screen::Menu;
+                        }
+                        self.scroll = 0;
+                    }
+                    KeyCode::Down | KeyCode::Char('j') => {
+                        self.scroll = self.scroll.saturating_add(1)
+                    }
+                    KeyCode::Up | KeyCode::Char('k') => self.scroll = self.scroll.saturating_sub(1),
+                    KeyCode::Enter if self.file_group.is_none() => {
+                        if let Some(g) =
+                            groups.get((self.scroll as usize).min(groups.len().saturating_sub(1)))
+                        {
+                            self.file_group = Some(g.name.into());
+                            self.scroll = 0;
+                        }
+                    }
+                    KeyCode::Char(' ') => {
+                        if let Some(group) = &self.file_group {
+                            let files: Vec<_> = plan
+                                .items
+                                .iter()
+                                .filter(|c| optimac::recovery::category(c) == group)
+                                .collect();
+                            if let Some(c) =
+                                files.get((self.scroll as usize).min(files.len().saturating_sub(1)))
+                                && !self.selected_files.remove(&c.path)
+                            {
+                                self.selected_files.insert(c.path.clone());
+                            }
+                        }
+                    }
+                    KeyCode::Char('r') => {
+                        let reviewed = optimac::recovery::select_files(plan, &self.selected_files);
+                        if !reviewed.items.is_empty() {
+                            *self.output.lock().unwrap() = optimac::recovery::describe(&reviewed);
+                            self.reviewed = Some(reviewed);
+                            self.confirm = true;
+                            self.scroll = 0;
+                        }
+                    }
+                    _ => {}
+                }
+                return false;
+            }
+            if self.confirm {
+                if key == KeyCode::Char('y') {
+                    self.confirm = false;
+                    self.choices.lock().unwrap().clear();
+                    self.scroll = 0;
+                    let plan = self
+                        .reviewed
+                        .take()
+                        .or_else(|| self.plan.lock().unwrap().take());
+                    self.plan.lock().unwrap().take();
+                    let restore = self.restore_id.take();
+                    let output = self.output.clone();
+                    self.cancel = Arc::new(AtomicBool::new(false));
+                    let cancel = self.cancel.clone();
+                    *output.lock().unwrap() =
+                        "Moving selected items… c cancels between moves".into();
+                    self.job = Some(std::thread::spawn(move || {
+                        let result = if let Some(id) = restore {
+                            optimac::recovery::restore(&home, &id)
+                        } else if let Some(plan) = plan {
+                            optimac::recovery::execute(&home, &plan, &cancel)
+                        } else {
+                            Err(io::Error::other("No reviewed plan"))
+                        };
+                        *output.lock().unwrap() = result.unwrap_or_else(|e| {
+                            format!(
+                                "Operation stopped: {e}. Check recovery records before retrying."
+                            )
+                        });
+                    }));
+                    return false;
+                }
+                if matches!(key, KeyCode::Char('n') | KeyCode::Esc) {
+                    self.confirm = false;
+                    self.reviewed = None;
+                    self.scroll = 0;
+                    self.restore_id = None;
+                    if self.selected == 12 {
+                        self.plan.lock().unwrap().take();
+                    }
+                    return false;
+                }
+            } else if key == KeyCode::Enter {
+                if matches!(self.selected, 12 | 15) {
+                    self.scroll = self.scroll.min(
+                        self.choices
+                            .lock()
+                            .unwrap()
+                            .len()
+                            .saturating_sub(1)
+                            .min(u16::MAX as usize) as u16,
+                    );
+                }
+                if self.selected == 12 {
+                    let choice = self
+                        .choices
+                        .lock()
+                        .unwrap()
+                        .get(self.scroll as usize)
+                        .cloned();
+                    if let Some(path) = choice {
+                        match optimac::recovery::app_plan(&home, std::path::Path::new(&path)) {
+                            Ok(plan) => {
+                                *self.output.lock().unwrap() = optimac::recovery::describe(&plan);
+                                *self.plan.lock().unwrap() = Some(plan);
+                                self.confirm = true;
+                            }
+                            Err(e) => {
+                                *self.output.lock().unwrap() = format!("Cannot uninstall: {e}")
+                            }
+                        }
+                    }
+                } else if self.selected == 15 {
+                    let choice = self
+                        .choices
+                        .lock()
+                        .unwrap()
+                        .get(self.scroll as usize)
+                        .cloned();
+                    if let Some(id) = choice {
+                        *self.output.lock().unwrap() = format!(
+                            "Restore recovery record {id}? Existing destinations will never be overwritten."
+                        );
+                        self.restore_id = Some(id);
+                        self.confirm = true;
+                    }
+                }
+                return false;
+            }
+        }
         if self.screen != Screen::Menu {
             match key {
                 KeyCode::Esc | KeyCode::Backspace => {
                     self.cancel.store(true, Ordering::Relaxed);
                     self.screen = Screen::Menu;
+                    self.confirm = false;
                 }
                 KeyCode::Char('c') => self.cancel.store(true, Ordering::Relaxed),
                 KeyCode::Down | KeyCode::Char('j') => self.scroll = self.scroll.saturating_add(1),
@@ -124,8 +285,38 @@ impl App {
                 let cancel = self.cancel.clone();
                 let root = self.root.clone();
                 let selected = self.selected;
+                self.plan = Arc::new(Mutex::new(None));
+                self.choices = Arc::new(Mutex::new(Vec::new()));
+                self.confirm = false;
+                self.selected_files.clear();
+                self.file_group = None;
+                self.reviewed = None;
+                let plan_state = self.plan.clone();
+                let choices = self.choices.clone();
                 self.job = Some(std::thread::spawn(move || {
-                    let result = optimac::actions::run(selected, &root, &cancel);
+                    let home = std::env::var_os("HOME")
+                        .map(PathBuf::from)
+                        .unwrap_or_default();
+                    let result = if selected == 2 {
+                        optimac::recovery::review_files(&home, &root, &cancel).map(|plan| {
+                            let text = optimac::recovery::describe(&plan);
+                            *plan_state.lock().unwrap() = Some(plan);
+                            text + "\nSelect individual files, then press r to review. Close apps using selected files first."
+                        })
+                    } else if selected == 12 || selected == 15 {
+                        let items = if selected == 12 {
+                            optimac::recovery::app_paths(&home)
+                                .iter()
+                                .filter_map(|p| p.to_str().map(String::from))
+                                .collect()
+                        } else {
+                            optimac::recovery::recovery_ids(&home)
+                        };
+                        *choices.lock().unwrap() = items;
+                        Ok("Use arrows to select, Enter to review. Only eligible owned apps are listed; personal data stays in place.".into())
+                    } else {
+                        optimac::actions::run(selected, &root, &cancel)
+                    };
                     *output.lock().unwrap() =
                         result.unwrap_or_else(|e| format!("Action failed: {e}"));
                 }));
@@ -218,10 +409,10 @@ fn render(frame: &mut Frame, app: &App) {
             let state = app.shared.lock().unwrap();
             let r = &state.0;
             let text = format!(
-                "{}\n\nFiles: {}\nLogical size: {:.2} GiB\nSkipped: {}   Errors: {}\n\nRead-only. Logical size is not reclaimable space.",
+                "{}\n\nFiles: {}\nLogical size: {}\nSkipped: {}   Errors: {}\n\nRead-only. Logical size is not reclaimable space.",
                 state.1,
                 r.files,
-                r.logical_bytes as f64 / 1_073_741_824.0,
+                optimac::format_size(r.logical_bytes),
                 r.skipped,
                 r.errors
             );
@@ -229,24 +420,104 @@ fn render(frame: &mut Frame, app: &App) {
         }
         Screen::Result => {
             let text = app.output.lock().unwrap();
-            let max_scroll = text
-                .lines()
-                .count()
-                .saturating_sub(1)
-                .min(u16::MAX as usize) as u16;
-            frame.render_widget(
-                Paragraph::new(text.as_str())
-                    .scroll((app.scroll.min(max_scroll), 0))
-                    .wrap(Wrap { trim: false })
-                    .block(Block::default().title(ITEMS[app.selected])),
-                body,
-            );
+            let choices = app.choices.lock().unwrap();
+            if app.selected == 2 && !app.confirm && app.plan.lock().unwrap().is_some() {
+                let plan = app.plan.lock().unwrap();
+                let plan = plan.as_ref().unwrap();
+                let groups = optimac::recovery::categories(plan);
+                let selected = optimac::recovery::select_files(plan, &app.selected_files);
+                let [summary, rows] = Layout::vertical([
+                    Constraint::Length(if body.height >= 8 { 4 } else { 1 }),
+                    Constraint::Min(0),
+                ])
+                .areas(body);
+                frame.render_widget(Paragraph::new(format!("{} files selected · {}\nEnter: open group · Space: select file · r: review\nPersonal files are not junk. Nothing is preselected.\nScope: {}",selected.items.len(),optimac::format_size(selected.items.iter().fold(0u64,|n,c|n.saturating_add(c.logical_size()))),app.root.display())).wrap(Wrap{trim:false}),summary);
+                let labels: Vec<String> = if let Some(group) = &app.file_group {
+                    plan.items
+                        .iter()
+                        .filter(|c| optimac::recovery::category(c) == group)
+                        .map(|c| {
+                            format!(
+                                "[{}] {}  {:?}",
+                                if app.selected_files.contains(&c.path) {
+                                    "x"
+                                } else {
+                                    " "
+                                },
+                                optimac::format_size(c.logical_size()),
+                                c.path
+                            )
+                        })
+                        .collect()
+                } else {
+                    groups
+                        .iter()
+                        .map(|g| {
+                            format!(
+                                "{} · {} files · {}",
+                                g.name,
+                                g.count,
+                                optimac::format_size(g.bytes)
+                            )
+                        })
+                        .collect()
+                };
+                let list = List::new(labels.iter().map(|s| ListItem::new(s.as_str())))
+                    .highlight_symbol("› ")
+                    .highlight_style(cyan)
+                    .block(
+                        Block::default().title(app.file_group.as_deref().unwrap_or("File groups")),
+                    );
+                let mut state = ListState::default().with_selected(if labels.is_empty() {
+                    None
+                } else {
+                    Some((app.scroll as usize).min(labels.len() - 1))
+                });
+                frame.render_stateful_widget(list, rows, &mut state);
+            } else if !app.confirm
+                && !choices.is_empty()
+                && app.plan.lock().unwrap().is_none()
+                && app.restore_id.is_none()
+            {
+                let list = List::new(choices.iter().map(|s| {
+                    ListItem::new(if app.selected == 12 {
+                        std::path::Path::new(s)
+                            .file_name()
+                            .unwrap_or_default()
+                            .to_string_lossy()
+                            .into_owned()
+                    } else {
+                        s.clone()
+                    })
+                }))
+                .highlight_symbol("› ")
+                .highlight_style(cyan)
+                .block(Block::default().title("↑/↓ select · Enter review"));
+                let mut state = ListState::default()
+                    .with_selected(Some((app.scroll as usize).min(choices.len() - 1)));
+                frame.render_stateful_widget(list, body, &mut state);
+            } else {
+                let max_scroll = text
+                    .lines()
+                    .count()
+                    .saturating_sub(1)
+                    .min(u16::MAX as usize) as u16;
+                frame.render_widget(
+                    Paragraph::new(text.as_str())
+                        .scroll((app.scroll.min(max_scroll), 0))
+                        .wrap(Wrap { trim: false })
+                        .block(Block::default().title(ITEMS[app.selected])),
+                    body,
+                );
+            }
         }
     }
-    let help = if app.screen == Screen::Menu {
+    let help = if app.confirm {
+        "Confirm reviewed operation? y yes · n cancel · ↑/↓ review"
+    } else if app.screen == Screen::Menu {
         "↑/↓ j/k move · Enter select · q quit"
     } else {
-        "Esc menu · ↑/↓ scroll · c cancel · q quit"
+        "Esc back · ↑/↓ move · Enter group · Space select · r review · q quit"
     };
     frame.render_widget(Paragraph::new(help).style(cyan), footer);
 }
@@ -280,6 +551,46 @@ pub fn run(root: PathBuf, cancel: Arc<AtomicBool>) -> io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn selected_files_are_frozen_for_confirmation() {
+        let plan:optimac::recovery::Plan=serde_json::from_str(r#"{"items":[{"path":"/Users/test/Documents/a.pdf","dev":1,"ino":1,"size":1000,"modified":0,"personal":true},{"path":"/Users/test/Documents/main.rs","dev":1,"ino":2,"size":2000,"modified":0,"personal":true}],"notes":[]}"#).unwrap();
+        let mut app = App::new(".".into());
+        app.screen = Screen::Result;
+        app.selected = 2;
+        *app.plan.lock().unwrap() = Some(plan);
+        app.key(KeyCode::Char('r'));
+        assert!(!app.confirm);
+        app.key(KeyCode::Enter);
+        app.key(KeyCode::Char(' '));
+        app.key(KeyCode::Char('r'));
+        assert!(app.confirm);
+        assert_eq!(app.reviewed.as_ref().unwrap().items.len(), 1);
+        assert!(
+            app.reviewed.as_ref().unwrap().items[0]
+                .path
+                .ends_with("a.pdf")
+        );
+        app.key(KeyCode::Char('n'));
+        assert!(!app.confirm);
+        app.key(KeyCode::Char(' '));
+        app.key(KeyCode::Char('r'));
+        assert!(!app.confirm);
+        let mut terminal =
+            ratatui::Terminal::new(ratatui::backend::TestBackend::new(20, 5)).unwrap();
+        terminal.draw(|f| render(f, &app)).unwrap();
+    }
+    #[test]
+    fn cleanup_requires_explicit_confirmation() {
+        let mut app = App::new(".".into());
+        app.screen = Screen::Result;
+        app.selected = 2;
+        app.key(KeyCode::Char('y'));
+        assert!(app.job.is_none());
+        app.confirm = true;
+        app.key(KeyCode::Char('n'));
+        assert!(!app.confirm);
+        assert!(app.job.is_none());
+    }
     #[test]
     fn menu_navigation_and_background_actions() {
         let root = std::env::temp_dir().join(format!("optimac-ui-{}", std::process::id()));
