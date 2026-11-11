@@ -1,5 +1,5 @@
 use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
-use optimac::{Report, scan_progress};
+use optimac::{Report, actions::Action, scan_progress};
 use ratatui::{
     Frame,
     layout::{Constraint, Layout},
@@ -16,35 +16,94 @@ use std::{
     time::Duration,
 };
 
-const ITEMS: &[&str] = &[
-    "Inspect directory",
-    "Deep Clean Preview",
-    "Run cleanup",
-    "Large Files",
-    "Duplicates",
-    "Project Artifacts",
-    "Updates",
-    "Login Items",
-    "Threat Scan",
-    "Hidden Space",
-    "Leftover data review",
-    "Doctor",
-    "Uninstall apps",
-    "Memory diagnostics",
-    "System Status",
-    "Restore recovered items",
-    "Quit",
+fn action_name(action: Action) -> &'static str {
+    match action {
+        Action::Inspect => "Inspect directory",
+        Action::CleanPreview => "Deep Clean Preview",
+        Action::Clean => "Run cleanup",
+        Action::LargeFiles => "Large Files",
+        Action::Duplicates => "Duplicates",
+        Action::Artifacts => "Project Artifacts",
+        Action::Updates => "Updates",
+        Action::Login => "Login Items",
+        Action::Threats => "Threat Scan",
+        Action::Storage => "Storage",
+        Action::Orphans => "Leftover data review",
+        Action::Doctor => "Security checks",
+        Action::Apps => "Uninstall apps",
+        Action::Memory => "Memory and swap",
+        Action::Status => "System overview",
+        Action::Restore => "Restore recovered items",
+        Action::AiTools => "AI tools status",
+    }
+}
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum HomeAction {
+    Clean,
+    Uninstall,
+    Analyze,
+    Duplicates,
+    Status,
+    More,
+}
+const HOME: &[(HomeAction, &str, &str)] = &[
+    (
+        HomeAction::Clean,
+        "Clean",
+        "Review files and move to recovery",
+    ),
+    (
+        HomeAction::Uninstall,
+        "Uninstall",
+        "Review and remove an app bundle",
+    ),
+    (
+        HomeAction::Analyze,
+        "Analyze",
+        "Explore files and disk usage",
+    ),
+    (
+        HomeAction::Duplicates,
+        "Duplicates",
+        "Find matching file contents",
+    ),
+    (HomeAction::Status, "Status", "Check system health"),
+    (HomeAction::More, "More", "Recovery and maintenance tools"),
 ];
+fn submenu(action: HomeAction) -> &'static [Action] {
+    match action {
+        HomeAction::Clean => &[Action::Clean, Action::Restore],
+        HomeAction::Uninstall => &[Action::Apps, Action::Restore],
+        HomeAction::Analyze => &[Action::Inspect, Action::LargeFiles, Action::Artifacts],
+        HomeAction::Duplicates => &[Action::Duplicates],
+        HomeAction::Status => &[
+            Action::Status,
+            Action::Memory,
+            Action::Storage,
+            Action::Doctor,
+            Action::AiTools,
+        ],
+        HomeAction::More => &[Action::Restore, Action::Updates, Action::Login],
+    }
+}
 #[derive(PartialEq, Debug)]
 enum Screen {
+    Home,
     Menu,
     Scan,
     Result,
+    Scope,
 }
 struct App {
-    selected: usize,
+    selected: Action,
+    home_cursor: usize,
+    submenu_cursor: usize,
+    home_action: HomeAction,
     screen: Screen,
     root: PathBuf,
+    scope_input: String,
+    scope_error: String,
+    scope_from_home: bool,
     plan: Arc<Mutex<Option<optimac::recovery::Plan>>>,
     choices: Arc<Mutex<Vec<String>>>,
     confirm: bool,
@@ -61,8 +120,14 @@ struct App {
 impl App {
     fn new(root: PathBuf) -> Self {
         Self {
-            selected: 0,
-            screen: Screen::Menu,
+            selected: Action::Inspect,
+            home_cursor: 0,
+            submenu_cursor: 0,
+            home_action: HomeAction::Clean,
+            screen: Screen::Home,
+            scope_input: root.to_string_lossy().into_owned(),
+            scope_error: String::new(),
+            scope_from_home: false,
             root,
             plan: Arc::new(Mutex::new(None)),
             choices: Arc::new(Mutex::new(Vec::new())),
@@ -79,14 +144,76 @@ impl App {
         }
     }
     fn key(&mut self, key: KeyCode) -> bool {
-        if key == KeyCode::Char('q') {
+        if key == KeyCode::Char('q') && self.screen != Screen::Scope {
             return true;
+        }
+        if self.screen == Screen::Scope {
+            match key {
+                KeyCode::Esc => {
+                    self.screen = if self.scope_from_home {
+                        Screen::Home
+                    } else {
+                        Screen::Menu
+                    };
+                    self.scope_error.clear();
+                }
+                KeyCode::Enter => {
+                    let path = PathBuf::from(&self.scope_input);
+                    if path.is_dir() {
+                        self.root = path;
+                        self.scope_error.clear();
+                        self.screen = if self.scope_from_home {
+                            Screen::Home
+                        } else {
+                            Screen::Menu
+                        };
+                    } else {
+                        self.scope_error = "Enter an existing directory".into();
+                    }
+                }
+                KeyCode::Backspace => {
+                    self.scope_input.pop();
+                }
+                KeyCode::Char(c) => self.scope_input.push(c),
+                _ => {}
+            }
+            return false;
+        }
+        if self.screen == Screen::Home {
+            match key {
+                KeyCode::Char('s') => {
+                    self.scope_from_home = true;
+                    self.scope_input = self.root.to_string_lossy().into_owned();
+                    self.screen = Screen::Scope;
+                }
+                KeyCode::Down | KeyCode::Char('j') => {
+                    self.home_cursor = (self.home_cursor + 1) % HOME.len()
+                }
+                KeyCode::Up | KeyCode::Char('k') => {
+                    self.home_cursor = (self.home_cursor + HOME.len() - 1) % HOME.len()
+                }
+                KeyCode::Home => self.home_cursor = 0,
+                KeyCode::End => self.home_cursor = HOME.len() - 1,
+                KeyCode::Enter => {
+                    self.home_action = HOME[self.home_cursor].0;
+                    self.submenu_cursor = 0;
+                    self.screen = Screen::Menu;
+                    if self.home_action == HomeAction::Duplicates {
+                        return self.key(KeyCode::Enter);
+                    }
+                }
+                _ => {}
+            }
+            return false;
         }
         if self.screen == Screen::Result && self.job.as_ref().is_none_or(|j| j.is_finished()) {
             let home = std::env::var_os("HOME")
                 .map(PathBuf::from)
                 .unwrap_or_default();
-            if !self.confirm && self.selected == 2 && self.plan.lock().unwrap().is_some() {
+            if !self.confirm
+                && self.selected == Action::Clean
+                && self.plan.lock().unwrap().is_some()
+            {
                 let plan = self.plan.lock().unwrap();
                 let plan = plan.as_ref().unwrap();
                 let groups = optimac::recovery::categories(plan);
@@ -174,13 +301,13 @@ impl App {
                     self.reviewed = None;
                     self.scroll = 0;
                     self.restore_id = None;
-                    if self.selected == 12 {
+                    if self.selected == Action::Apps {
                         self.plan.lock().unwrap().take();
                     }
                     return false;
                 }
             } else if key == KeyCode::Enter {
-                if matches!(self.selected, 12 | 15) {
+                if matches!(self.selected, Action::Apps | Action::Restore) {
                     self.scroll = self.scroll.min(
                         self.choices
                             .lock()
@@ -190,7 +317,7 @@ impl App {
                             .min(u16::MAX as usize) as u16,
                     );
                 }
-                if self.selected == 12 {
+                if self.selected == Action::Apps {
                     let choice = self
                         .choices
                         .lock()
@@ -209,7 +336,7 @@ impl App {
                             }
                         }
                     }
-                } else if self.selected == 15 {
+                } else if self.selected == Action::Restore {
                     let choice = self
                         .choices
                         .lock()
@@ -227,11 +354,25 @@ impl App {
                 return false;
             }
         }
+        if self.screen == Screen::Result
+            && self.home_action == HomeAction::Status
+            && key == KeyCode::Char('r')
+        {
+            if self.job.as_ref().is_none_or(|j| j.is_finished()) {
+                self.screen = Screen::Menu;
+                return self.key(KeyCode::Enter);
+            }
+            return false;
+        }
         if self.screen != Screen::Menu {
             match key {
                 KeyCode::Esc | KeyCode::Backspace => {
                     self.cancel.store(true, Ordering::Relaxed);
-                    self.screen = Screen::Menu;
+                    self.screen = if self.home_action == HomeAction::Duplicates {
+                        Screen::Home
+                    } else {
+                        Screen::Menu
+                    };
                     self.confirm = false;
                 }
                 KeyCode::Char('c') => self.cancel.store(true, Ordering::Relaxed),
@@ -242,14 +383,29 @@ impl App {
             return false;
         }
         match key {
-            KeyCode::Down | KeyCode::Char('j') => self.selected = (self.selected + 1) % ITEMS.len(),
-            KeyCode::Up | KeyCode::Char('k') => {
-                self.selected = (self.selected + ITEMS.len() - 1) % ITEMS.len()
+            KeyCode::Char('s') => {
+                self.scope_from_home = false;
+                self.scope_input = self.root.to_string_lossy().into_owned();
+                self.screen = Screen::Scope;
             }
-            KeyCode::Home => self.selected = 0,
-            KeyCode::End => self.selected = ITEMS.len() - 1,
-            KeyCode::Enter if self.selected == ITEMS.len() - 1 => return true,
-            KeyCode::Enter if self.selected == 0 => {
+            KeyCode::Esc | KeyCode::Backspace => {
+                self.screen = Screen::Home;
+            }
+            KeyCode::Down | KeyCode::Char('j') => {
+                self.submenu_cursor = (self.submenu_cursor + 1) % submenu(self.home_action).len()
+            }
+            KeyCode::Up | KeyCode::Char('k') => {
+                self.submenu_cursor = (self.submenu_cursor + submenu(self.home_action).len() - 1)
+                    % submenu(self.home_action).len()
+            }
+            KeyCode::Home => self.submenu_cursor = 0,
+            KeyCode::End => self.submenu_cursor = submenu(self.home_action).len() - 1,
+            KeyCode::Enter
+                if {
+                    self.selected = submenu(self.home_action)[self.submenu_cursor];
+                    self.selected == Action::Inspect
+                } =>
+            {
                 if self.job.as_ref().is_some_and(|job| !job.is_finished()) {
                     return false;
                 }
@@ -297,14 +453,14 @@ impl App {
                     let home = std::env::var_os("HOME")
                         .map(PathBuf::from)
                         .unwrap_or_default();
-                    let result = if selected == 2 {
+                    let result = if selected == Action::Clean {
                         optimac::recovery::review_files(&home, &root, &cancel).map(|plan| {
                             let text = optimac::recovery::describe(&plan);
                             *plan_state.lock().unwrap() = Some(plan);
                             text + "\nSelect individual files, then press r to review. Close apps using selected files first."
                         })
-                    } else if selected == 12 || selected == 15 {
-                        let items = if selected == 12 {
+                    } else if selected == Action::Apps || selected == Action::Restore {
+                        let items = if selected == Action::Apps {
                             optimac::recovery::app_paths(&home)
                                 .iter()
                                 .filter_map(|p| p.to_str().map(String::from))
@@ -313,12 +469,30 @@ impl App {
                             optimac::recovery::recovery_ids(&home)
                         };
                         *choices.lock().unwrap() = items;
-                        Ok("Use arrows to select, Enter to review. Only eligible owned apps are listed; personal data stays in place.".into())
+                        Ok(if selected == Action::Apps {"Use arrows to select, Enter to review. Only eligible owned apps are listed; personal data stays in place."} else {"Select a recovery record to review."}.into())
+                    } else if selected == Action::AiTools {
+                        Ok(optimac::actions::ai_tools_status(&home))
                     } else {
                         optimac::actions::run(selected, &root, &cancel)
                     };
-                    *output.lock().unwrap() =
-                        result.unwrap_or_else(|e| format!("Action failed: {e}"));
+                    let text = result.unwrap_or_else(|e| format!("Action failed: {e}"));
+                    let text = if matches!(
+                        selected,
+                        Action::Status
+                            | Action::Memory
+                            | Action::Storage
+                            | Action::Doctor
+                            | Action::AiTools
+                    ) {
+                        let timestamp = std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .map(|d| d.as_secs())
+                            .unwrap_or(0);
+                        format!("Collected at Unix time {timestamp} UTC · r refresh\n\n{text}")
+                    } else {
+                        text
+                    };
+                    *output.lock().unwrap() = text;
                 }));
             }
             _ => {}
@@ -349,7 +523,15 @@ fn render(frame: &mut Frame, app: &App) {
     let cyan = Style::default().fg(Color::Rgb(103, 232, 249));
     if area.height < 4 || area.width < 18 {
         frame.render_widget(
-            Paragraph::new(format!("OptiMac\n{}\nq quit", ITEMS[app.selected])).style(cyan),
+            Paragraph::new(format!(
+                "OptiMac\n{}\nq quit",
+                if app.screen == Screen::Home {
+                    HOME[app.home_cursor].1
+                } else {
+                    action_name(app.selected)
+                }
+            ))
+            .style(cyan),
             area,
         );
         return;
@@ -372,6 +554,22 @@ fn render(frame: &mut Frame, app: &App) {
     };
     frame.render_widget(Paragraph::new(header_text).style(cyan), header);
     match app.screen {
+        Screen::Scope => {
+            frame.render_widget(Paragraph::new(format!("Scope directory (absolute or relative):\n{}\n{}\n\nEnter save · Esc cancel\nClean also reviews supported home cache roots.",app.scope_input,app.scope_error)).wrap(Wrap {trim:false}),body);
+        }
+        Screen::Home => {
+            let entries = HOME.iter().enumerate().map(|(i, (_, name, desc))| {
+                ListItem::new(format!("{}. {:12} {}", i + 1, name, desc))
+            });
+            let mut state = ListState::default().with_selected(Some(app.home_cursor));
+            frame.render_stateful_widget(
+                List::new(entries)
+                    .highlight_symbol("› ")
+                    .highlight_style(cyan.add_modifier(Modifier::BOLD)),
+                body,
+                &mut state,
+            );
+        }
         Screen::Menu => {
             let mut list_area = body;
             if area.width >= 95 {
@@ -379,30 +577,28 @@ fn render(frame: &mut Frame, app: &App) {
                     Layout::horizontal([Constraint::Percentage(52), Constraint::Percentage(48)])
                         .areas(body);
                 list_area = left;
-                let description = if app.selected == 0 {
+                let current = submenu(app.home_action)[app.submenu_cursor];
+                let description = if current == Action::Inspect {
                     "Inspect file sizes in the selected directory. Read-only, with scan limits and cancellation.\n\nEnter to start."
-                } else if app.selected == ITEMS.len() - 1 {
-                    "Close OptiMac."
                 } else {
-                    optimac::actions::description(app.selected)
+                    optimac::actions::description(current)
                 };
                 frame.render_widget(
                     Paragraph::new(description)
                         .wrap(Wrap { trim: true })
-                        .block(Block::bordered().title(ITEMS[app.selected])),
+                        .block(Block::bordered().title(action_name(current))),
                     right,
                 );
             }
-            let items: Vec<_> = ITEMS
+            let items: Vec<_> = submenu(app.home_action)
                 .iter()
-                .enumerate()
-                .map(|(i, title)| ListItem::new(format!("{}  {}", i + 1, title)))
+                .map(|&i| ListItem::new(action_name(i)))
                 .collect();
             let list = List::new(items)
                 .block(Block::default().title("ACTIONS"))
                 .highlight_symbol("› ")
                 .highlight_style(cyan.bg(Color::Rgb(23, 32, 54)).add_modifier(Modifier::BOLD));
-            let mut state = ListState::default().with_selected(Some(app.selected));
+            let mut state = ListState::default().with_selected(Some(app.submenu_cursor));
             frame.render_stateful_widget(list, list_area, &mut state);
         }
         Screen::Scan => {
@@ -421,7 +617,7 @@ fn render(frame: &mut Frame, app: &App) {
         Screen::Result => {
             let text = app.output.lock().unwrap();
             let choices = app.choices.lock().unwrap();
-            if app.selected == 2 && !app.confirm && app.plan.lock().unwrap().is_some() {
+            if app.selected == Action::Clean && !app.confirm && app.plan.lock().unwrap().is_some() {
                 let plan = app.plan.lock().unwrap();
                 let plan = plan.as_ref().unwrap();
                 let groups = optimac::recovery::categories(plan);
@@ -480,7 +676,7 @@ fn render(frame: &mut Frame, app: &App) {
                 && app.restore_id.is_none()
             {
                 let list = List::new(choices.iter().map(|s| {
-                    ListItem::new(if app.selected == 12 {
+                    ListItem::new(if app.selected == Action::Apps {
                         std::path::Path::new(s)
                             .file_name()
                             .unwrap_or_default()
@@ -506,7 +702,7 @@ fn render(frame: &mut Frame, app: &App) {
                     Paragraph::new(text.as_str())
                         .scroll((app.scroll.min(max_scroll), 0))
                         .wrap(Wrap { trim: false })
-                        .block(Block::default().title(ITEMS[app.selected])),
+                        .block(Block::default().title(action_name(app.selected))),
                     body,
                 );
             }
@@ -514,8 +710,10 @@ fn render(frame: &mut Frame, app: &App) {
     }
     let help = if app.confirm {
         "Confirm reviewed operation? y yes · n cancel · ↑/↓ review"
-    } else if app.screen == Screen::Menu {
-        "↑/↓ j/k move · Enter select · q quit"
+    } else if matches!(app.screen, Screen::Menu | Screen::Home) {
+        "↑/↓ move · Enter select · s scope · Esc back · q quit"
+    } else if app.screen == Screen::Result && app.home_action == HomeAction::Status {
+        "Esc back · ↑/↓ scroll · r refresh · c cancel · q quit"
     } else {
         "Esc back · ↑/↓ move · Enter group · Space select · r review · q quit"
     };
@@ -524,7 +722,7 @@ fn render(frame: &mut Frame, app: &App) {
 
 pub fn run(root: PathBuf, cancel: Arc<AtomicBool>) -> io::Result<()> {
     let mut app = App::new(root);
-    ratatui::run(|terminal| -> io::Result<()> {
+    let result = ratatui::run(|terminal| -> io::Result<()> {
         loop {
             terminal.draw(|frame| render(frame, &app))?;
             if cancel.load(Ordering::Relaxed) {
@@ -545,18 +743,61 @@ pub fn run(root: PathBuf, cancel: Arc<AtomicBool>) -> io::Result<()> {
             }
         }
         Ok(())
-    })
+    });
+    app.cancel.store(true, Ordering::Relaxed);
+    if let Some(worker) = app.job.take() {
+        let _ = worker.join();
+    }
+    result
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     #[test]
+    fn scope_navigation_and_direct_duplicates_return() {
+        let mut app = App::new(".".into());
+        app.key(KeyCode::Char('s'));
+        assert_eq!(app.screen, Screen::Scope);
+        app.scope_input = "/not-a-real-optimac-scope".into();
+        app.key(KeyCode::Enter);
+        assert_eq!(app.screen, Screen::Scope);
+        assert!(!app.scope_error.is_empty());
+        app.key(KeyCode::Esc);
+        assert_eq!(app.screen, Screen::Home);
+        app.home_action = HomeAction::Duplicates;
+        app.home_cursor = 3;
+        app.screen = Screen::Result;
+        app.key(KeyCode::Esc);
+        assert_eq!(app.screen, Screen::Home);
+        assert_eq!(app.home_cursor, 3);
+    }
+    #[test]
+    fn home_and_submenus_map_without_launching_mutations() {
+        let mut app = App::new(".".into());
+        assert_eq!(HOME.len(), 6);
+        assert_eq!(
+            submenu(HomeAction::Clean),
+            &[Action::Clean, Action::Restore]
+        );
+        assert_eq!(
+            submenu(HomeAction::Uninstall),
+            &[Action::Apps, Action::Restore]
+        );
+        assert_eq!(submenu(HomeAction::Duplicates), &[Action::Duplicates]);
+        assert!(submenu(HomeAction::Status).contains(&Action::AiTools));
+        app.key(KeyCode::Enter);
+        assert_eq!(app.screen, Screen::Menu);
+        assert!(app.job.is_none());
+        app.key(KeyCode::Esc);
+        assert_eq!(app.screen, Screen::Home);
+    }
+    #[test]
     fn selected_files_are_frozen_for_confirmation() {
         let plan:optimac::recovery::Plan=serde_json::from_str(r#"{"items":[{"path":"/Users/test/Documents/a.pdf","dev":1,"ino":1,"size":1000,"modified":0,"personal":true},{"path":"/Users/test/Documents/main.rs","dev":1,"ino":2,"size":2000,"modified":0,"personal":true}],"notes":[]}"#).unwrap();
         let mut app = App::new(".".into());
         app.screen = Screen::Result;
-        app.selected = 2;
+        app.selected = Action::Clean;
         *app.plan.lock().unwrap() = Some(plan);
         app.key(KeyCode::Char('r'));
         assert!(!app.confirm);
@@ -583,7 +824,7 @@ mod tests {
     fn cleanup_requires_explicit_confirmation() {
         let mut app = App::new(".".into());
         app.screen = Screen::Result;
-        app.selected = 2;
+        app.selected = Action::Clean;
         app.key(KeyCode::Char('y'));
         assert!(app.job.is_none());
         app.confirm = true;
@@ -596,24 +837,26 @@ mod tests {
         let root = std::env::temp_dir().join(format!("optimac-ui-{}", std::process::id()));
         std::fs::create_dir_all(&root).unwrap();
         let mut app = App::new(root.clone());
-        app.selected = 2;
+        app.screen = Screen::Menu;
+        app.home_action = HomeAction::Analyze;
+        app.submenu_cursor = 0;
         assert!(!app.key(KeyCode::Down));
-        assert_eq!(app.selected, 3);
+        assert_eq!(app.submenu_cursor, 1);
         app.key(KeyCode::Enter);
         assert_eq!(app.screen, Screen::Result);
         app.job.take().unwrap().join().unwrap();
         std::fs::remove_dir(root).unwrap();
         app.key(KeyCode::Esc);
         assert_eq!(app.screen, Screen::Menu);
-        app.key(KeyCode::End);
-        assert!(app.key(KeyCode::Enter));
+        app.key(KeyCode::Esc);
+        assert_eq!(app.screen, Screen::Home);
     }
     #[test]
     fn all_screens_resize_and_selected_item_stays_visible() {
         use ratatui::{Terminal, backend::TestBackend};
         let mut terminal = Terminal::new(TestBackend::new(120, 40)).unwrap();
         let mut app = App::new(".".into());
-        for screen in [Screen::Menu, Screen::Scan, Screen::Result] {
+        for screen in [Screen::Home, Screen::Menu, Screen::Scan, Screen::Result] {
             app.screen = screen;
             for (w, h) in [
                 (1, 1),
@@ -625,14 +868,15 @@ mod tests {
                 (80, 24),
             ] {
                 terminal.backend_mut().resize(w, h);
-                for selected in 0..ITEMS.len() {
-                    app.selected = selected;
+                for _selected in 0..17 {
+                    app.selected = Action::Inspect;
                     terminal.draw(|f| render(f, &app)).unwrap();
                 }
             }
         }
         app.screen = Screen::Menu;
-        app.selected = ITEMS.len() - 1;
+        app.home_action = HomeAction::More;
+        app.submenu_cursor = 2;
         terminal.backend_mut().resize(40, 10);
         terminal.draw(|f| render(f, &app)).unwrap();
         let buffer = terminal.backend().buffer();
@@ -642,7 +886,7 @@ mod tests {
                 .iter()
                 .map(|c| c.symbol())
                 .collect::<String>()
-                .contains("Quit")
+                .contains("Login Items")
         );
     }
     #[test]

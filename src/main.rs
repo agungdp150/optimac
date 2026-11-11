@@ -16,7 +16,7 @@ fn main() -> ExitCode {
     }
     if args == ["--help"] || args == ["help"] || args == ["-h"] {
         println!(
-            "OptiMac: Rust edition (reviewed cleanup available in the menu)\nUsage: optimac inspect <directory> | ui <directory>\nMetadata only; at most 100000 entries and 32 directory levels.\nLogical bytes are not reclaimable space. 30-second scan budget. Use local test directories.\nRead-only commands: analyze, duplicates, artifacts [directory]; clean (preview), apps (inventory), updates, login, threats, space, orphans (review), doctor, optimize (diagnostics), status."
+            "OptiMac: Rust edition (reviewed cleanup available in the menu)\nUsage: optimac inspect <directory> | ui <directory>\nMetadata only; at most 100000 entries and 32 directory levels.\nLogical bytes are not reclaimable space. 30-second scan budget. Use local test directories.\nRead-only commands: analyze, duplicates, artifacts [directory]; clean (preview), apps (inventory), updates, login, space, doctor, optimize (diagnostics), status."
         );
         return ExitCode::SUCCESS;
     }
@@ -63,10 +63,13 @@ fn main() -> ExitCode {
         };
     }
     let command = args.first().and_then(|a| a.to_str()).unwrap_or("");
-    if let Some(index) = optimac::actions::COMMANDS
-        .iter()
-        .position(|c| *c == command && *c != "inspect")
-    {
+    if matches!(command, "threats" | "scan-threats" | "orphans") {
+        eprintln!(
+            "This feature was retired: filename matches and folder listings cannot reliably establish threats or orphaned data."
+        );
+        return ExitCode::from(2);
+    }
+    if let Some(index) = optimac::actions::Action::command(command) {
         if args
             .iter()
             .skip(1)

@@ -19,7 +19,10 @@ make build
 installs it to `~/.local/bin/optimac`. An existing installed binary is not replaced
 until you run that install command. `make rust-build` remains an alias.
 
-The cat-themed home menu opens with `optimac`, `optimac ui` or `optimac menu`.
+The six-choice home menu offers Clean, Uninstall, Analyze, Duplicates, Status and More.
+From the home screen or a submenu, press `s` to change the scan scope. Status includes a read-only
+AI tools screen with unverified local directory hints; usage and quotas are not
+yet integrated. The cat-themed home menu opens with `optimac`, `optimac ui` or `optimac menu`.
 Use arrows or j/k to navigate, Enter to select, and Esc to return. The inspection
 action starts a scan of the current directory (or the path supplied to `ui`).
 Menu actions open bounded background jobs; mutations require a reviewed plan and explicit confirmation.
@@ -52,8 +55,8 @@ This is a breaking Rust-only cutover. The menu and CLI now support:
 - `inspect`, `ui` / `menu`, help and version.
 - `analyze [directory]`, `duplicates [directory]`, `artifacts [directory]`.
 - `clean` (conservative cache preview only), `apps` (inventory only).
-- `updates`, `login`, `threats`, `space`, `doctor`, `status`.
-- `orphans` (manual support-folder review, not proven orphan detection).
+- `updates`, `login`, `space`, `doctor`, `status`.
+- `threats` and `orphans` are retired because the former checks were insufficient.
 - `optimize` (memory diagnostics, no purge).
 - `log` / `history` (Rust recovery-record inventory only).
 

@@ -75,3 +75,15 @@ fn artifact_sizes_sum_scanned_files() {
     assert!(String::from_utf8_lossy(&output.stdout).contains("2.50 KB"));
     std::fs::remove_dir_all(root).unwrap();
 }
+
+#[test]
+fn retired_commands_explain_why() {
+    for command in ["threats", "orphans"] {
+        let output = Command::new(env!("CARGO_BIN_EXE_optimac"))
+            .arg(command)
+            .output()
+            .unwrap();
+        assert_eq!(output.status.code(), Some(2));
+        assert!(String::from_utf8_lossy(&output.stderr).contains("retired"));
+    }
+}

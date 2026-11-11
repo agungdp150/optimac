@@ -9,51 +9,97 @@ use std::{
     time::{Duration, Instant},
 };
 
-pub const COMMANDS: &[&str] = &[
-    "inspect",
-    "clean",
-    "clean",
-    "analyze",
-    "duplicates",
-    "artifacts",
-    "updates",
-    "login",
-    "threats",
-    "space",
-    "orphans",
-    "doctor",
-    "apps",
-    "optimize",
-    "status",
-];
-pub fn description(index: usize) -> &'static str {
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Action {
+    Inspect,
+    CleanPreview,
+    Clean,
+    LargeFiles,
+    Duplicates,
+    Artifacts,
+    Updates,
+    Login,
+    Threats,
+    Storage,
+    Orphans,
+    Doctor,
+    Apps,
+    Memory,
+    Status,
+    Restore,
+    AiTools,
+}
+impl Action {
+    pub fn command(name: &str) -> Option<Self> {
+        Some(match name {
+            "clean" => Self::CleanPreview,
+            "analyze" => Self::LargeFiles,
+            "duplicates" => Self::Duplicates,
+            "artifacts" => Self::Artifacts,
+            "updates" => Self::Updates,
+            "login" => Self::Login,
+            "space" => Self::Storage,
+            "doctor" => Self::Doctor,
+            "apps" => Self::Apps,
+            "optimize" => Self::Memory,
+            "status" => Self::Status,
+            _ => return None,
+        })
+    }
+}
+pub fn description(index: Action) -> &'static str {
     match index {
-        1 | 2 => {
+        Action::CleanPreview | Action::Clean => {
             "Review Documents, Programming, Browser, Media and other groups. Personal files must be individually selected before confirmation."
         }
-        3 => "Largest regular files in the selected scope; logical sizes, read-only.",
-        4 => "Compare same-sized local files byte for byte. Bounded scan; no automatic deletion.",
-        5 => "Find project build and dependency directories in the selected scope.",
-        6 => "List outdated Homebrew packages without updating or installing anything.",
-        7 => "List user and system launch agent/daemon files. No services are changed.",
-        8 => {
+        Action::LargeFiles => {
+            "Largest regular files in the selected scope; logical sizes, read-only."
+        }
+        Action::Duplicates => {
+            "Compare same-sized local files byte for byte. Bounded scan; no automatic deletion."
+        }
+        Action::Artifacts => "Find project build and dependency directories in the selected scope.",
+        Action::Updates => {
+            "List outdated Homebrew packages without updating or installing anything."
+        }
+        Action::Login => "List user and system launch agent/daemon files. No services are changed.",
+        Action::Threats => {
             "Check names against the legacy adware/PUP signatures. Not a malware verdict or antivirus scan."
         }
-        9 => "Inspect disk capacity and local Time Machine snapshots.",
-        10 => {
+        Action::Storage => "Inspect disk capacity and local Time Machine snapshots.",
+        Action::Orphans => {
             "List Application Support folders for manual review. Absence of an app is not proof that its data is disposable."
         }
-        11 => "Read FileVault, SIP, Gatekeeper and firewall status.",
-        12 => {
+        Action::Doctor => "Read FileVault, SIP, Gatekeeper and firewall status.",
+        Action::Apps => {
             "Select an owned app bundle, review and confirm moving it to recovery. Personal data is preserved."
         }
-        13 => {
+        Action::Memory => {
             "Read memory statistics and swap usage. No purge, service restart or process termination."
         }
-        14 => "Read macOS, CPU, memory and filesystem status.",
-        15 => "Select a Rust recovery record and restore without overwriting existing files.",
+        Action::Status => "Read macOS, CPU, memory and filesystem status.",
+        Action::Restore => {
+            "Select a Rust recovery record and restore without overwriting existing files."
+        }
+        Action::AiTools => "Show local AI-tool directory hints and unavailable usage/quota states.",
         _ => "Inspect metadata in the selected scope with cancellation and scan limits.",
     }
+}
+/// Read-only hints only: directory existence does not verify a provider or version.
+pub fn ai_tools_status(home: &Path) -> String {
+    let mut output = String::from(
+        "AI tools — local directory hints only; installation and version not verified.\nNo network requests or agent commands run.\n\n",
+    );
+    for (name, path) in [
+        ("Codex", ".codex"),
+        ("Claude", ".claude"),
+        ("Grok", ".grok"),
+        ("Antigravity", ".antigravity"),
+    ] {
+        output.push_str(&format!("{name}: {}\n  Cache cleanup: unsupported until verified\n  Token usage: unavailable\n  Quota: unavailable\n", if home.join(path).is_dir() { "local directory found (not verified)" } else { "not detected" }));
+    }
+    output.push_str("\nLocal usage, account usage and quotas require verified provider-specific sources. Missing values are not zero or unlimited.\n");
+    output
 }
 fn home() -> io::Result<PathBuf> {
     std::env::var_os("HOME")
@@ -332,19 +378,19 @@ pub(crate) fn review_paths(root: &Path, cancel: &AtomicBool) -> io::Result<(Vec<
         note,
     ))
 }
-pub fn run(index: usize, root: &Path, cancel: &AtomicBool) -> io::Result<String> {
+pub fn run(index: Action, root: &Path, cancel: &AtomicBool) -> io::Result<String> {
     let h = home()?;
     match index {
-        1 | 2 => {
+        Action::CleanPreview | Action::Clean => {
             let plan = crate::recovery::review_files(&h, root, cancel)?;
             Ok(format!(
                 "Grouped file review only. Select individual files in the Run cleanup menu to perform recoverable moves.\n{}",
                 crate::recovery::describe(&plan)
             ))
         }
-        3..=5 => {
+        Action::LargeFiles | Action::Duplicates | Action::Artifacts => {
             let (mut entries, mut s) = walk(root, cancel)?;
-            if index == 3 {
+            if index == Action::LargeFiles {
                 entries.retain(|e| !e.dir);
                 entries.sort_by_key(|e| std::cmp::Reverse(e.size));
                 for e in entries.iter().take(200) {
@@ -354,7 +400,7 @@ pub fn run(index: usize, root: &Path, cancel: &AtomicBool) -> io::Result<String>
                         e.path
                     ));
                 }
-            } else if index == 5 {
+            } else if index == Action::Artifacts {
                 s.push_str("Build/dependency candidates; observed file totals (partial if entries were skipped or limits reached); manual review only:\n");
                 for e in entries
                     .iter()
@@ -432,7 +478,7 @@ pub fn run(index: usize, root: &Path, cancel: &AtomicBool) -> io::Result<String>
             }
             Ok(s)
         }
-        6 => {
+        Action::Updates => {
             let brew = if Path::new("/opt/homebrew/bin/brew").exists() {
                 "/opt/homebrew/bin/brew"
             } else {
@@ -440,7 +486,7 @@ pub fn run(index: usize, root: &Path, cancel: &AtomicBool) -> io::Result<String>
             };
             command(brew, &["outdated", "--greedy"], cancel)
         }
-        7 => Ok([
+        Action::Login => Ok([
             h.join("Library/LaunchAgents"),
             PathBuf::from("/Library/LaunchAgents"),
             PathBuf::from("/Library/LaunchDaemons"),
@@ -448,7 +494,7 @@ pub fn run(index: usize, root: &Path, cancel: &AtomicBool) -> io::Result<String>
         .iter()
         .map(|p| listing(p))
         .collect()),
-        8 => {
+        Action::Threats => {
             let mut s = String::from(
                 "Legacy filename signature review only. Matches are not proof of malware; no matches is not a clean bill of health.\n",
             );
@@ -504,18 +550,18 @@ pub fn run(index: usize, root: &Path, cancel: &AtomicBool) -> io::Result<String>
             }
             Ok(s)
         }
-        9 => Ok(commands(
+        Action::Storage => Ok(commands(
             &[
                 ("/bin/df", &["-h"]),
                 ("/usr/bin/tmutil", &["listlocalsnapshots", "/"]),
             ],
             cancel,
         )),
-        10 => Ok(format!(
+        Action::Orphans => Ok(format!(
             "Manual leftover review — these are NOT confirmed orphans. No deletion is offered.\n{}",
             listing(&h.join("Library/Application Support"))
         )),
-        11 => Ok(commands(
+        Action::Doctor => Ok(commands(
             &[
                 ("/usr/bin/fdesetup", &["status"]),
                 ("/usr/bin/csrutil", &["status"]),
@@ -527,12 +573,12 @@ pub fn run(index: usize, root: &Path, cancel: &AtomicBool) -> io::Result<String>
             ],
             cancel,
         )),
-        12 => Ok(format!(
+        Action::Apps => Ok(format!(
             "Application inventory. Uninstall is disabled pending safe recovery support.\n{}{}",
             listing(Path::new("/Applications")),
             listing(&h.join("Applications"))
         )),
-        13 => Ok(format!(
+        Action::Memory => Ok(format!(
             "Memory diagnostics — no purge or system changes.\n{}",
             commands(
                 &[
@@ -542,7 +588,7 @@ pub fn run(index: usize, root: &Path, cancel: &AtomicBool) -> io::Result<String>
                 cancel
             )
         )),
-        14 => Ok(commands(
+        Action::Status => Ok(commands(
             &[
                 ("/usr/bin/sw_vers", &[]),
                 ("/usr/sbin/sysctl", &["hw.memsize", "hw.ncpu"]),
