@@ -18,7 +18,14 @@ pub(super) fn render(frame: &mut Frame, app: &App) {
         );
         return;
     }
-    let header_height = if area.height >= 16 { 5 } else { 1 };
+    let status_screen = app.screen == Screen::Result && app.home_action == HomeAction::Status;
+    let header_height = if status_screen {
+        0
+    } else if area.height >= 16 {
+        5
+    } else {
+        1
+    };
     let [header, body, footer] = Layout::vertical([
         Constraint::Length(header_height),
         Constraint::Min(1),
@@ -95,6 +102,40 @@ pub(super) fn render(frame: &mut Frame, app: &App) {
                 r.errors
             );
             frame.render_widget(Paragraph::new(text).wrap(Wrap { trim: false }), body);
+        }
+        Screen::Result
+            if app.home_action == HomeAction::Status && app.selected != Action::Status =>
+        {
+            let detail = app.status_detail.lock().unwrap();
+            match detail.as_ref() {
+                Some(detail) => super::status::render_detail(
+                    frame,
+                    body,
+                    action_name(app.selected),
+                    detail,
+                    app.scroll,
+                ),
+                None => frame.render_widget(
+                    Paragraph::new(
+                        " /\\_/\\\n( o.o )  Gathering status…\n > ^ <\n\nPress c to cancel.",
+                    )
+                    .style(cyan),
+                    body,
+                ),
+            }
+        }
+        Screen::Result if app.selected == Action::Status => {
+            let snapshot = app.status_snapshot.lock().unwrap();
+            match snapshot.as_ref() {
+                Some(status) => super::status::render(frame, body, status),
+                None => frame.render_widget(
+                    Paragraph::new(
+                        " /\\_/\\\n( o.o )  Gathering system status…\n > ^ <\n\nPress c to cancel.",
+                    )
+                    .style(cyan),
+                    body,
+                ),
+            }
         }
         Screen::Result
             if app.job.as_ref().is_some_and(|job| !job.is_finished())
@@ -260,7 +301,12 @@ pub(super) fn render(frame: &mut Frame, app: &App) {
             }
         }
     }
-    let help = if app.confirm {
+    let status_refreshing = app.screen == Screen::Result
+        && app.home_action == HomeAction::Status
+        && app.job.as_ref().is_some_and(|j| !j.is_finished());
+    let help = if status_refreshing {
+        "Refreshing… · Esc back · c cancel · q quit"
+    } else if app.confirm {
         "Confirm reviewed operation? y yes · n cancel · ↑/↓ review"
     } else if matches!(app.screen, Screen::Menu | Screen::Home) {
         "↑/↓ move · Enter select · s scope · Esc back · q quit"

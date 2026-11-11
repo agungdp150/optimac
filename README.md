@@ -1,132 +1,208 @@
+<div align="center">
+
+<img src="assets/logo.svg" alt="OptiMac cat logo" width="120">
+
 # OptiMac
 
-OptiMac 0.2.0 is a Rust-only macOS filesystem inspector and conservative cleanup tool with a responsive
-terminal UI. The menu supports reviewed cleanup, app-bundle removal and Rust recovery. No Go toolchain is needed.
+**A thoughtful terminal companion for taking care of your Mac.**
 
-## Build and run
+Inspect your storage, review cleanup candidates, manage app bundles, and keep an
+eye on system health—all from a keyboard-friendly Rust interface.
 
-Install a current stable Rust toolchain (Rust 1.93 or newer), then:
+[Getting started](#getting-started) · [Features](#features) · [Safety](#how-cleanup-works) · [Contributing](#contributing)
+
+[![Platform: macOS](https://img.shields.io/badge/platform-macOS-6f9fb8)](https://github.com/agungdp150/optimac)
+[![Built with Rust](https://img.shields.io/badge/built%20with-Rust-ce8b68)](https://github.com/agungdp150/optimac)
+[![License: MIT](https://img.shields.io/badge/license-MIT-67c9ba)](LICENSE)
+
+</div>
+
+```text
+ /\_/\  zZ    OptiMac
+( o.o )       mac care
+ > ^ <
+
+ › Clean       Review files and move to recovery
+   Uninstall   Review and remove an app bundle
+   Analyze     Explore files and disk usage
+   Duplicates  Find matching file contents
+   Status      Check system health
+   More        Recovery and maintenance tools
+
+ ↑/↓ move · Enter select · s scope · q quit
+```
+
+<sub>Illustrative menu; the interface adapts to your terminal size.</sub>
+
+> **Current status:** OptiMac is in development. The Rust edition has a different
+> feature set from the earlier Go release. Review the [migration notes](#upgrading-from-01x)
+> before replacing an existing installation.
+
+## Features
+
+| | What you can do |
+| --- | --- |
+| **Clean** | Review files grouped by type, select candidates, and confirm recoverable moves. Eligible old caches are preselected; personal files are not. |
+| **Uninstall** | Review an eligible user-owned app bundle and move it to recovery. Personal data and shared support files stay in place. |
+| **Analyze** | Inspect a directory, find large files, and review project build or dependency artifacts. |
+| **Duplicates** | Find files with matching contents using bounded byte-for-byte comparisons. |
+| **Status** | View a compact system dashboard plus memory, storage, and security details. |
+| **More** | Restore Rust recovery records, check outdated Homebrew packages, and list launch items. |
+
+## Getting started
+
+### Requirements
+
+- macOS and a terminal with an interactive shell.
+- Rust **1.93 or newer** to build from source.
+- Homebrew only if you want to use the Homebrew installation or update check.
+
+### Build from source
 
 ```sh
+git clone https://github.com/agungdp150/optimac.git
+cd optimac
 make build
 ./bin/optimac
-./bin/optimac ui ./src
-./bin/optimac inspect ./src
-./bin/optimac version
 ```
 
-`make build` builds Rust and copies the binary to `bin/optimac`. `make install`
-installs it to `~/.local/bin/optimac`. An existing installed binary is not replaced
-until you run that install command. `make rust-build` remains an alias.
-
-The six-choice home menu offers Clean, Uninstall, Analyze, Duplicates, Status and More.
-From the home screen or a submenu, press `s` to change the scan scope. Status includes a read-only
-AI tools screen with unverified local directory hints; usage and quotas are not
-yet integrated. The cat-themed home menu opens with `optimac`, `optimac ui` or `optimac menu`.
-Use arrows or j/k to navigate, Enter to select, and Esc to return. The inspection
-action starts a scan of the current directory (or the path supplied to `ui`).
-Menu actions open bounded background jobs; mutations require a reviewed plan and explicit confirmation.
-Resize freely; press `c` to cancel scanning and `q` or Ctrl-C to quit.
-CLI scans also support Ctrl-C. Run `optimac --help` for usage.
-
-## Scope and limits
-
-Scans inspect metadata on one worker, with a 100000-entry budget, a 32-directory
-stack limit and a cooperative 30-second deadline. Observed symlinks, filesystem
-boundaries, selected sensitive/cloud directories and macOS dataless entries are
-skipped. Filesystem calls already in flight can exceed the deadline. Root paths
-are explicit; use local directories. Ancestor symlinks, network roots and all
-cloud providers are not comprehensively handled yet.
-
-Sizes automatically use B, KB, MB, GB or larger decimal units (1 KB = 1,000 bytes).
-Sizes are calculated from file metadata and remain exact bytes internally. Artifact
-directory totals include scanned files only and may be partial.
-Sizes are logical lengths, not allocated or reclaimable disk space. Hard links
-are counted per path. Output reports errors, skipped entries and budget limits.
-Exit codes: 0 command completed (review diagnostic output for partial results),
-1 top-level error or cancellation, 2 invalid or unavailable command. `inspect` also
-returns 1 for traversal errors or budget limits. Other diagnostic reports may
-contain per-check failures or partial results while returning 0. Read-only CLI reports never mutate files; the menu supports confirmed recoverable moves.
-
-## Migration from 0.1.x
-
-This is a breaking Rust-only cutover. The menu and CLI now support:
-
-- `inspect`, `ui` / `menu`, help and version.
-- `analyze [directory]`, `duplicates [directory]`, `artifacts [directory]`.
-- `clean` (conservative cache preview only), `apps` (inventory only).
-- `updates`, `login`, `space`, `doctor`, `status`.
-- `threats` and `orphans` are retired because the former checks were insufficient.
-- `optimize` (memory diagnostics, no purge).
-- `log` / `history` (Rust recovery-record inventory only).
-
-**Deep Clean Preview** and **Run cleanup** group eligible files as Documents,
-Programming, Browser, Images, Videos, Audio, Archives, Installers and Other.
-Groups show counts and logical sizes for scanned files, not guaranteed reclaimable
-space. Only nonempty groups appear.
-
-Personal files are discovered inside the selected scope within your Documents,
-Downloads, Desktop, Pictures, Movies and Music directories. For example:
+To install the built binary to `~/.local/bin/optimac`:
 
 ```sh
-optimac ui ~/Downloads
+make install
+optimac
 ```
 
-Old developer and browser caches are also reviewed from explicit home-cache roots.
-Browser profiles, cookies, passwords and history are excluded. Cache candidates
-must be older than 30 days; personal files are not considered disposable based on
-age or category. Sensitive folders, app bundles, photo libraries, symlinks, hard
-links and `.env` files are excluded from personal-file selection.
+Make sure `~/.local/bin` comes before any older OptiMac installation in your
+`PATH`. If `optimac version` shows an older version, run `rehash` in zsh or start
+a new shell. You can also run `~/.local/bin/optimac` directly.
 
-In **Run cleanup**, arrows highlight a group and Enter opens it. Space selects an
-individual file, Esc returns to groups, and `r` reviews the exact selected files.
-Eligible old cache files are preselected; personal files are not. Press `u` to
-clear the selection or `a` to select eligible caches again. Confirm with `y`, or
-use `n` to return. Recovery retains
-data on disk, so moves do not reclaim space. Close apps using selected files first;
-active-file status is checked again before each move. Scans are bounded and group
-totals may be partial; the confirmation includes scan notes.
+### Homebrew: development build
 
-**Uninstall apps** lists eligible user-owned bundles in `/Applications` and
-`~/Applications`. Select one and review before confirming. Only the bundle moves;
-personal data and shared leftovers are preserved. Protected or other-owned apps
-are excluded. **Restore recovered items** restores a selected Rust recovery ID
-without overwriting an existing destination. Existing legacy recovery data is not
-imported. CLI execution flags remain disabled; use the reviewed menu workflow.
-
-Recovery records are written before same-volume exclusive moves. Symlink ancestors
-are rejected, parent directories opened without following links, and moved identity
-is checked. Recovery operations serialize with a filesystem lock. No root elevation,
-copy/delete fallback, RAM purge, automatic orphan deletion, or login-item toggling
-is performed. Recovery may still need manual attention after external tampering or
-hardware failure; review errors and retain the journal.
-
-Other actions remain read-only: updates, launch-item listing, filename threat hints,
-manual leftover review, and bounded diagnostics. They are intentionally limited;
-threat-name matches are not antivirus verdicts and leftover folders are not proven
-orphans. Memory diagnostics replace forced purging. Results support arrow scrolling
-and `c` cancellation. A filesystem call already in flight can delay cancellation.
-
-Existing configuration and `~/.optimac` recovery data are left untouched. The Rust
-binary cannot restore old trash operations yet; use a previous release for that.
-See [migration status](docs/RUST-MIGRATION.md) for remaining work.
-
-## Homebrew development build
-
-The formula is HEAD-only until a Rust release archive and checksum are published:
+The formula is **HEAD-only** until a Rust release archive and checksum are
+published. This builds the remote `main` branch; local changes must be pushed
+before they are available through Homebrew.
 
 ```sh
 brew tap agungdp150/optimac https://github.com/agungdp150/optimac
 brew install --HEAD agungdp150/optimac/optimac
 ```
 
-HEAD builds the remote main branch, so it will include this migration only after
-these changes are merged. Local development uses `make build`.
+## Using OptiMac
 
-## Development
+Launch the menu in the current directory, or choose a starting scope:
 
 ```sh
-make test
-make security
-make release-check
+optimac
+optimac ui ~/Downloads
 ```
+
+| Key | Action |
+| --- | --- |
+| `↑` / `↓` or `j` / `k` | Move through lists |
+| `Enter` / `Esc` | Open / go back |
+| `s` | Change scan scope from the home screen or a submenu |
+| `Space` | Select or deselect a file in cleanup review |
+| `a` / `u` | Select eligible caches / clear the cleanup selection |
+| `r` | Review the cleanup selection, or refresh a Status screen |
+| `c` | Request cancellation of a running operation |
+| `q` | Quit |
+
+The scope applies to personal-file review and analysis. Cleanup also inspects its
+explicitly supported home cache roots; changing the scope does not expand which
+paths are allowed for cleanup.
+
+### Command-line reports
+
+```sh
+optimac inspect ~/Downloads      # Metadata summary
+optimac analyze ~/Downloads      # Largest scanned files
+optimac duplicates ~/Downloads   # Exact-content comparisons
+optimac artifacts .              # Project artifact candidates
+optimac clean                    # Cleanup preview
+optimac status                   # Text system report
+optimac doctor                   # Security checks
+optimac log                      # Rust recovery record inventory
+optimac --help
+```
+
+CLI reports are read-only. Cleanup execution, app-bundle moves, and Rust recovery
+restoration use the interactive menu and require confirmation. Duplicate detection
+does not delete files. `threats` and `orphans` are retired because the earlier
+checks were insufficient.
+
+## How cleanup works
+
+1. **Scan** the selected scope and supported cache locations. OptiMac groups
+   candidates and shows their logical sizes and any scan limits or errors.
+2. **Choose** what to move. Eligible cache files older than 30 days are
+   preselected. Personal files must be selected individually; a category does
+   not mean a file is disposable.
+3. **Review and confirm** the exact paths. Press `r` to review, then `y` to
+   confirm or `n` to go back.
+4. **Restore if needed** using **More → Restore recovered items**. A restore
+   will not overwrite an existing destination.
+
+> **Moving files to recovery does not free disk space.** The data remains on the
+> same volume so it can be restored. OptiMac does not currently provide permanent
+> deletion or an empty-recovery action.
+
+Cleanup uses reviewed plans, checks file identity and whether files appear in use,
+records recovery information, and refuses a copy-and-delete fallback. It skips
+uncertain or inaccessible items. Close apps and developer tools using the selected
+files before cleaning; active-file checks cannot prevent an app from opening a file
+immediately afterward. OptiMac does not run the interface as root or force a RAM
+purge.
+
+Personal-file selection is limited to standard folders—Documents, Downloads,
+Desktop, Pictures, Movies, and Music—within the chosen scope. Browser review is
+limited to supported old cache locations; browser profiles, history, cookies, and
+credentials are excluded. Sensitive folders, symlinks, hard-linked files, app
+bundles, photo libraries, and `.env` files are excluded from personal-file cleanup.
+
+## Status and scan limits
+
+The **Status → System overview** dashboard shows CPU load, estimated memory
+availability, disk capacity, battery information, and process samples. It refreshes
+after completed samples at a three-second interval; press `r` to refresh manually.
+Unavailable checks are labeled. Memory availability is an estimate, not macOS
+memory pressure. APFS total minus available is not a precise used-space measure.
+Live CPU utilization and network throughput are not currently measured.
+
+Scans use bounded work: up to 100,000 entries, 32 directory levels, and a
+cooperative 30-second deadline for the general scanner. Other operations have
+their own limits. In-flight filesystem calls can take longer to return. Results
+may be partial when files are skipped, permissions fail, or a limit is reached.
+Network roots, ancestor symlinks, and every cloud provider are not comprehensively
+handled; use a local scope and review the reported status.
+
+Sizes are **logical file lengths**, displayed in decimal units such as KB and GB.
+They are not allocated or reclaimable space, and hard links may be counted per
+path. CLI reports can contain partial results or per-check failures even when the
+command itself exits successfully; inspect the report before acting.
+
+## Upgrading from 0.1.x
+
+The Rust edition is a breaking change from the Go version. Existing configuration
+and `~/.optimac` recovery data are left untouched, but the Rust version cannot
+restore legacy trash operations. Use a previous release if you need to restore
+those records. See [migration status](docs/RUST-MIGRATION.md) for details and
+remaining work.
+
+## Contributing
+
+Issues, ideas, and pull requests are welcome. Start with the
+[contribution guide](CONTRIBUTING.md) and [security policy](SECURITY.md).
+
+```sh
+make test           # Format check, tests, and Clippy
+make security       # Repository guardrails
+make release-check  # Version and packaging checks
+```
+
+See the [roadmap](ROADMAP.md) for planned work and the
+[changelog](CHANGELOG.md) for release history.
+
+## License
+
+[MIT](LICENSE) © 2026 Luceid

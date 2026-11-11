@@ -1,4 +1,5 @@
 mod render;
+mod status;
 use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
 use optimac::{Report, actions::Action, scan_progress};
 use ratatui::{
@@ -84,7 +85,6 @@ fn submenu(action: HomeAction) -> &'static [Action] {
             Action::Memory,
             Action::Storage,
             Action::Doctor,
-            Action::AiTools,
         ],
         HomeAction::More => &[Action::Restore, Action::Updates, Action::Login],
     }
@@ -118,6 +118,9 @@ struct App {
     reviewed: Option<optimac::recovery::Plan>,
     restore_id: Option<String>,
     output: Arc<Mutex<String>>,
+    status_snapshot: Arc<Mutex<Option<optimac::actions::status::Snapshot>>>,
+    status_detail: Arc<Mutex<Option<optimac::actions::status::Detail>>>,
+    last_status_refresh: std::time::Instant,
     scroll: u16,
     job: Option<std::thread::JoinHandle<()>>,
     cancel: Arc<AtomicBool>,
@@ -146,6 +149,9 @@ impl App {
             reviewed: None,
             restore_id: None,
             output: Arc::new(Mutex::new(String::new())),
+            status_snapshot: Arc::new(Mutex::new(None)),
+            status_detail: Arc::new(Mutex::new(None)),
+            last_status_refresh: std::time::Instant::now(),
             scroll: 0,
             job: None,
             cancel: Arc::new(AtomicBool::new(false)),
@@ -169,6 +175,33 @@ impl App {
             );
             self.cache_selection_initialized = true;
         }
+    }
+    fn refresh_status(&mut self) {
+        if self.job.as_ref().is_some_and(|job| !job.is_finished()) {
+            return;
+        }
+        self.cancel = Arc::new(AtomicBool::new(false));
+        self.last_status_refresh = std::time::Instant::now();
+        let cancel = self.cancel.clone();
+        let snapshot = self.status_snapshot.clone();
+        let detail = self.status_detail.clone();
+        let selected = self.selected;
+        self.job = Some(std::thread::spawn(move || {
+            let home = std::env::var_os("HOME")
+                .map(PathBuf::from)
+                .unwrap_or_default();
+            if selected == Action::Status {
+                let next = optimac::actions::status::collect(&cancel);
+                if !cancel.load(Ordering::Relaxed) {
+                    *snapshot.lock().unwrap() = Some(next);
+                }
+            } else {
+                let next = optimac::actions::status::collect_detail(selected, &home, &cancel);
+                if !cancel.load(Ordering::Relaxed) {
+                    *detail.lock().unwrap() = Some(next);
+                }
+            }
+        }));
     }
     fn key(&mut self, key: KeyCode) -> bool {
         self.initialize_cache_selection();
@@ -419,10 +452,7 @@ impl App {
             && self.home_action == HomeAction::Status
             && key == KeyCode::Char('r')
         {
-            if self.job.as_ref().is_none_or(|j| j.is_finished()) {
-                self.screen = Screen::Menu;
-                return self.key(KeyCode::Enter);
-            }
+            self.refresh_status();
             return false;
         }
         if self.screen != Screen::Menu {
@@ -508,6 +538,13 @@ impl App {
                 let cancel = self.cancel.clone();
                 let root = self.root.clone();
                 let selected = self.selected;
+                self.status_snapshot = Arc::new(Mutex::new(None));
+                self.status_detail = Arc::new(Mutex::new(None));
+                let detail = self.status_detail.clone();
+                if selected == Action::Status {
+                    self.last_status_refresh = std::time::Instant::now();
+                }
+                let snapshot = self.status_snapshot.clone();
                 self.plan = Arc::new(Mutex::new(None));
                 self.choices = Arc::new(Mutex::new(Vec::new()));
                 self.confirm = false;
@@ -538,8 +575,18 @@ impl App {
                         };
                         *choices.lock().unwrap() = items;
                         Ok(if selected == Action::Apps {"Use arrows to select, Enter to review. Only eligible owned apps are listed; personal data stays in place."} else {"Select a recovery record to review."}.into())
-                    } else if selected == Action::AiTools {
-                        Ok(optimac::actions::ai_tools_status(&home))
+                    } else if selected == Action::Status {
+                        *snapshot.lock().unwrap() =
+                            Some(optimac::actions::status::collect(&cancel));
+                        Ok(String::new())
+                    } else if matches!(
+                        selected,
+                        Action::Memory | Action::Storage | Action::Doctor | Action::AiTools
+                    ) {
+                        *detail.lock().unwrap() = Some(optimac::actions::status::collect_detail(
+                            selected, &home, &cancel,
+                        ));
+                        Ok(String::new())
                     } else {
                         optimac::actions::run(selected, &root, &cancel)
                     };
@@ -616,6 +663,13 @@ pub fn run(root: PathBuf, cancel: Arc<AtomicBool>) -> io::Result<()> {
     let result = ratatui::run(|terminal| -> io::Result<()> {
         loop {
             app.initialize_cache_selection();
+            if app.screen == Screen::Result
+                && app.selected == Action::Status
+                && app.job.as_ref().is_some_and(|j| j.is_finished())
+                && app.last_status_refresh.elapsed() >= Duration::from_secs(3)
+            {
+                app.key(KeyCode::Char('r'));
+            }
             app.animation_frame = app.animation_frame.wrapping_add(1);
             terminal.draw(|frame| render(frame, &app))?;
             if cancel.load(Ordering::Relaxed) {

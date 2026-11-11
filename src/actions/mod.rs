@@ -1,4 +1,5 @@
 mod process;
+pub mod status;
 pub(crate) use process::command;
 use process::commands;
 // Bounded read-only feature jobs shared by the CLI and menu.

@@ -103,7 +103,7 @@ fn home_and_submenus_map_without_launching_mutations() {
         &[Action::Apps, Action::Restore]
     );
     assert_eq!(submenu(HomeAction::Duplicates), &[Action::Duplicates]);
-    assert!(submenu(HomeAction::Status).contains(&Action::AiTools));
+    assert!(!submenu(HomeAction::Status).contains(&Action::AiTools));
     app.key(KeyCode::Enter);
     assert_eq!(app.screen, Screen::Menu);
     assert!(app.job.is_none());
@@ -213,4 +213,44 @@ fn limited_scan_is_not_called_complete() {
         ..Report::default()
     };
     assert!(completion(&report).starts_with("Stopped at scan limit"));
+}
+
+#[test]
+fn status_refresh_keeps_previous_values_and_does_not_overlap() {
+    use std::sync::mpsc;
+    let mut app = App::new(".".into());
+    app.screen = Screen::Result;
+    app.home_action = HomeAction::Status;
+    app.selected = Action::Memory;
+    app.scroll = 3;
+    *app.status_detail.lock().unwrap() = Some(optimac::actions::status::Detail {
+        collected: None,
+        sections: vec![("Memory pages".into(), vec![("Free".into(), "42 MB".into())])],
+    });
+    let (tx, rx) = mpsc::channel::<()>();
+    app.job = Some(std::thread::spawn(move || {
+        let _ = rx.recv();
+    }));
+    let previous = app.status_detail.clone();
+    app.key(KeyCode::Char('r'));
+    assert_eq!(app.screen, Screen::Result);
+    assert_eq!(app.scroll, 3);
+    assert!(Arc::ptr_eq(&previous, &app.status_detail));
+    assert_eq!(
+        app.status_detail.lock().unwrap().as_ref().unwrap().sections[0].1[0].1,
+        "42 MB"
+    );
+    let mut terminal = ratatui::Terminal::new(ratatui::backend::TestBackend::new(80, 24)).unwrap();
+    terminal.draw(|f| render(f, &app)).unwrap();
+    let screen = terminal
+        .backend()
+        .buffer()
+        .content
+        .iter()
+        .map(|c| c.symbol())
+        .collect::<String>();
+    assert!(screen.contains("42 MB"));
+    assert!(screen.contains("Refreshing"));
+    tx.send(()).unwrap();
+    app.job.take().unwrap().join().unwrap();
 }
