@@ -146,7 +146,11 @@ fn main() -> ExitCode {
         );
         return ExitCode::from(2);
     }
-    match optimac::scan(Path::new(&args[1]), &cancel, 100_000) {
+    match optimac::scan(
+        Path::new(&args[1]),
+        &cancel,
+        optimac::limits::SCAN_MAX_ENTRIES,
+    ) {
         Ok(report) => {
             println!(
                 "Files: {}\nLogical size: {} ({} bytes)\nSkipped: {}\nErrors: {}\nCancelled: {}\nBudget reached: {}",

@@ -80,7 +80,9 @@ links and `.env` files are excluded from personal-file selection.
 
 In **Run cleanup**, arrows highlight a group and Enter opens it. Space selects an
 individual file, Esc returns to groups, and `r` reviews the exact selected files.
-Nothing is preselected. Confirm with `y`, or use `n` to return. Recovery retains
+Eligible old cache files are preselected; personal files are not. Press `u` to
+clear the selection or `a` to select eligible caches again. Confirm with `y`, or
+use `n` to return. Recovery retains
 data on disk, so moves do not reclaim space. Close apps using selected files first;
 active-file status is checked again before each move. Scans are bounded and group
 totals may be partial; the confirmation includes scan notes.

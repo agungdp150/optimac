@@ -67,7 +67,9 @@ Combine Deep Clean Preview and Run cleanup into one workflow:
 3. Scan in the background, showing progress, cancellation and incomplete results.
 4. Display nonempty categories with counts and logical sizes: Documents,
    Programming, Browser, AI tools, Images, Videos, Audio, Archives, Installers and Other.
-5. Open a category to select individual files. Nothing is selected by default.
+5. Open a category to review individual files. Eligible old cache candidates are
+   preselected; personal files are never preselected. Provide clear-all and
+   select-caches actions.
    Categories describe file types; they do not imply files are safe to discard.
 6. Review the exact selected paths and total size. Only an explicit confirmation
    authorizes recoverable moves. Cancellation returns to selection.
@@ -343,7 +345,7 @@ restore import.
    and usage/quota adapters incrementally as described above.
 7. Run unit, integration and terminal tests before rebuilding or installing.
 
-Likely implementation files: [ui.rs](../src/ui.rs), [actions.rs](../src/actions.rs),
+Likely implementation files: [UI module](../src/ui/mod.rs), [actions module](../src/actions/mod.rs),
 [main.rs](../src/main.rs), and [CLI tests](../tests/cli.rs). New navigation modules
 may be appropriate. Existing recovery rules remain the baseline. AI-tool cleanup is a separately
 validated extension, with provider-specific exclusions and the same confirmation

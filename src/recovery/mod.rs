@@ -1,11 +1,11 @@
-//! Conservative, journaled, same-volume cache cleanup. Never permanently deletes.
+#[path = "fs.rs"]
+mod fs_ops;
+use fs_ops::{move_exclusive, operation_lock, sync_dir};
+// Conservative, journaled, same-volume cache cleanup. Never permanently deletes.
 use serde::{Deserialize, Serialize};
-use std::os::unix::{
-    ffi::OsStrExt,
-    fs::{MetadataExt, OpenOptionsExt, PermissionsExt},
-};
+use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
 use std::{
-    fs::{self, File, OpenOptions},
+    fs::{self, OpenOptions},
     io::{self, Write},
     path::{Path, PathBuf},
     sync::atomic::{AtomicBool, Ordering},
@@ -25,6 +25,10 @@ pub struct Candidate {
     personal: bool,
 }
 impl Candidate {
+    /// Candidate came from an explicitly allowlisted old-cache root, not a personal-file scan.
+    pub fn is_cache_candidate(&self) -> bool {
+        !self.personal && !self.app
+    }
     pub fn logical_size(&self) -> u64 {
         self.size
     }
@@ -139,7 +143,9 @@ pub fn preview(home: &Path, cancel: &AtomicBool) -> io::Result<Plan> {
         }
         let mut stack = vec![(root, 0)];
         while let Some((path, depth)) = stack.pop() {
-            if cancel.load(Ordering::Relaxed) || visited >= 10000 || start.elapsed().as_secs() >= 15
+            if cancel.load(Ordering::Relaxed)
+                || visited >= crate::limits::CLEANUP_MAX_ENTRIES
+                || start.elapsed() >= crate::limits::CLEANUP_TIMEOUT
             {
                 plan.notes.push("Stopped early; partial preview".into());
                 return Ok(plan);
@@ -155,10 +161,13 @@ pub fn preview(home: &Path, cancel: &AtomicBool) -> io::Result<Plan> {
             if m.is_symlink() {
                 continue;
             }
-            if m.is_dir() && depth < 16 {
+            if m.is_dir() && depth < crate::limits::CLEANUP_MAX_DEPTH {
                 match fs::read_dir(&path) {
                     Ok(entries) => {
-                        for e in entries.take(10000usize.saturating_sub(visited + stack.len())) {
+                        for e in entries.take(
+                            crate::limits::CLEANUP_MAX_ENTRIES
+                                .saturating_sub(visited + stack.len()),
+                        ) {
                             match e {
                                 Ok(e) => stack.push((e.path(), depth + 1)),
                                 Err(e) => plan.notes.push(format!("Read error: {e}")),
@@ -167,7 +176,9 @@ pub fn preview(home: &Path, cancel: &AtomicBool) -> io::Result<Plan> {
                     }
                     Err(e) => plan.notes.push(format!("Skipped {path:?}: {e}")),
                 }
-            } else if m.is_file() && now.saturating_sub(m.mtime()) >= 30 * 86400 {
+            } else if m.is_file()
+                && now.saturating_sub(m.mtime()) >= crate::limits::CACHE_MIN_AGE_SECONDS
+            {
                 let c = Candidate {
                     path,
                     dev: m.dev(),
@@ -327,97 +338,30 @@ fn recovery_root(home: &Path) -> io::Result<PathBuf> {
     }
     Ok(p)
 }
-fn sync_dir(path: &Path) -> io::Result<()> {
-    File::open(path)?.sync_all()
+
+#[derive(Clone, Debug, Default)]
+pub struct CleanupProgress {
+    pub total: usize,
+    pub processed: usize,
+    pub moved: usize,
+    pub skipped: usize,
+    pub current: Option<PathBuf>,
 }
-#[cfg(target_os = "macos")]
-fn move_exclusive(source: &Path, target: &Path) -> io::Result<()> {
-    use std::os::fd::{AsRawFd, FromRawFd};
-    fn open_dir(path: &Path) -> io::Result<File> {
-        let mut dir = File::open("/")?;
-        for component in path.components() {
-            match component {
-                std::path::Component::RootDir => continue,
-                std::path::Component::Normal(name) => {
-                    let name = std::ffi::CString::new(name.as_bytes())?;
-                    let fd = unsafe {
-                        libc::openat(
-                            dir.as_raw_fd(),
-                            name.as_ptr(),
-                            libc::O_RDONLY | libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC,
-                        )
-                    };
-                    if fd < 0 {
-                        return Err(io::Error::last_os_error());
-                    }
-                    dir = unsafe { File::from_raw_fd(fd) };
-                }
-                _ => return Err(error("Unsafe path component")),
-            }
-        }
-        Ok(dir)
-    }
-    let source_dir = open_dir(
-        source
-            .parent()
-            .ok_or_else(|| error("Missing source parent"))?,
-    )?;
-    let target_dir = open_dir(
-        target
-            .parent()
-            .ok_or_else(|| error("Missing target parent"))?,
-    )?;
-    let a = std::ffi::CString::new(
-        source
-            .file_name()
-            .ok_or_else(|| error("Missing source name"))?
-            .as_bytes(),
-    )?;
-    let b = std::ffi::CString::new(
-        target
-            .file_name()
-            .ok_or_else(|| error("Missing target name"))?
-            .as_bytes(),
-    )?;
-    let rc = unsafe {
-        libc::renameatx_np(
-            source_dir.as_raw_fd(),
-            a.as_ptr(),
-            target_dir.as_raw_fd(),
-            b.as_ptr(),
-            libc::RENAME_EXCL,
-        )
-    };
-    if rc == 0 {
-        Ok(())
-    } else {
-        Err(io::Error::last_os_error())
-    }
-}
-#[cfg(not(target_os = "macos"))]
-fn move_exclusive(_source: &Path, _target: &Path) -> io::Result<()> {
-    Err(error("Recovery mutation is macOS-only"))
-}
-fn operation_lock(root: &Path) -> io::Result<File> {
-    use std::os::fd::AsRawFd;
-    let file = OpenOptions::new()
-        .read(true)
-        .write(true)
-        .create(true)
-        .truncate(false)
-        .mode(0o600)
-        .custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC)
-        .open(root.join(".lock"))?;
-    let m = file.metadata()?;
-    if !m.is_file() || m.nlink() != 1 || m.uid() != unsafe { libc::geteuid() } {
-        return Err(error("Unsafe recovery lock"));
-    }
-    if unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } != 0 {
-        return Err(error("Another recovery operation is running"));
-    }
-    Ok(file)
-}
+
 pub fn execute(home: &Path, plan: &Plan, cancel: &AtomicBool) -> io::Result<String> {
+    execute_with_progress(home, plan, cancel, |_| {})
+}
+pub fn execute_with_progress(
+    home: &Path,
+    plan: &Plan,
+    cancel: &AtomicBool,
+    mut update: impl FnMut(&CleanupProgress),
+) -> io::Result<String> {
+    let mut progress = CleanupProgress {
+        total: plan.items.len(),
+        ..CleanupProgress::default()
+    };
+    update(&progress);
     if unsafe { libc::geteuid() } == 0 {
         return Err(error("Do not run cleanup as root"));
     }
@@ -429,7 +373,12 @@ pub fn execute(home: &Path, plan: &Plan, cancel: &AtomicBool) -> io::Result<Stri
             report.push_str("Cancelled; completed moves remain recoverable\n");
             break;
         }
+        progress.current = Some(c.path.clone());
+        update(&progress);
         if let Err(e) = validate_candidate(home, c) {
+            progress.processed += 1;
+            progress.skipped += 1;
+            update(&progress);
             report.push_str(&format!("Skipped {:?}: {e}\n", c.path));
             continue;
         }
@@ -445,10 +394,20 @@ pub fn execute(home: &Path, plan: &Plan, cancel: &AtomicBool) -> io::Result<Stri
         match crate::actions::command("/usr/sbin/lsof", &args, cancel) {
             Ok(open) if open.trim().is_empty() => {}
             Ok(_) => {
+                progress.processed += 1;
+                progress.skipped += 1;
+                update(&progress);
                 report.push_str(&format!("Skipped {:?}: in use\n", c.path));
                 continue;
             }
             Err(e) => {
+                if cancel.load(Ordering::Relaxed) {
+                    report.push_str("Cancelled; completed moves remain recoverable\n");
+                    break;
+                }
+                progress.processed += 1;
+                progress.skipped += 1;
+                update(&progress);
                 report.push_str(&format!(
                     "Skipped {:?}: active-file status unknown: {e}\n",
                     c.path
@@ -491,12 +450,20 @@ pub fn execute(home: &Path, plan: &Plan, cancel: &AtomicBool) -> io::Result<Stri
                 }
                 sync_dir(c.path.parent().unwrap())?;
                 sync_dir(&dir)?;
+                progress.processed += 1;
+                progress.moved += 1;
+                update(&progress);
                 report.push_str(&format!("Moved {:?}; restore ID {id}\n", c.path));
             }
-            Err(e) => report.push_str(&format!(
-                "Not moved {:?}: {e}; no copy/delete fallback\n",
-                c.path
-            )),
+            Err(e) => {
+                progress.processed += 1;
+                progress.skipped += 1;
+                update(&progress);
+                report.push_str(&format!(
+                    "Not moved {:?}: {e}; no copy/delete fallback\n",
+                    c.path
+                ));
+            }
         }
     }
     Ok(report
@@ -659,11 +626,16 @@ mod tests {
         );
         let mut stale = app_plan(&root, &app).unwrap();
         stale.items[0].ino = 0;
+        let mut events = Vec::new();
         assert!(
-            execute(&root, &stale, &AtomicBool::new(false))
-                .unwrap()
-                .contains("Skipped")
+            execute_with_progress(&root, &stale, &AtomicBool::new(false), |p| events
+                .push(p.clone()))
+            .unwrap()
+            .contains("Skipped")
         );
+        assert_eq!(events.last().unwrap().processed, 1);
+        assert_eq!(events.last().unwrap().skipped, 1);
+        assert_eq!(events.last().unwrap().moved, 0);
         assert!(app.exists());
         fs::remove_dir_all(root).unwrap();
     }
@@ -708,7 +680,14 @@ mod tests {
             items: vec![c],
             notes: vec![],
         };
-        let result = execute(&root, &plan, &AtomicBool::new(false)).unwrap();
+        let mut events = Vec::new();
+        let result = execute_with_progress(&root, &plan, &AtomicBool::new(false), |p| {
+            events.push(p.clone())
+        })
+        .unwrap();
+        assert_eq!(events.first().unwrap().total, 1);
+        assert_eq!(events.last().unwrap().processed, 1);
+        assert_eq!(events.last().unwrap().moved, 1);
         assert!(result.contains("Moved"));
         assert!(!p.exists());
         let id = fs::read_dir(root.join(".optimac-rust-recovery"))

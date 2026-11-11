@@ -44,3 +44,13 @@ If a legitimate change needs one of these patterns, open an issue first and docu
 - Trash-backed operations should log an operation ID.
 - Protected paths must stay protected.
 - Tests should cover both success and refusal cases.
+
+## Code structure
+
+- `src/ui/` contains terminal navigation, rendering, and UI tests.
+- `src/actions/` contains typed diagnostic actions and bounded subprocess handling.
+- `src/recovery/` contains cleanup plans, recovery policy, and filesystem helpers.
+- `src/common/` contains shared scanning, categories, formatting, and resource budgets.
+- `src/main.rs` is the CLI entry point; `src/lib.rs` exposes the shared library.
+
+Keep filesystem policy in the recovery layer and keep UI rendering free of mutations.
