@@ -4,6 +4,7 @@ use ratatui::{
     Frame,
     layout::{Constraint, Layout},
     style::{Color, Modifier, Style},
+    text::{Line, Span, Text},
     widgets::{Block, List, ListItem, ListState, Paragraph, Wrap},
 };
 use std::{
@@ -206,6 +207,19 @@ impl App {
             }
             return false;
         }
+        if self.screen == Screen::Result
+            && !self.confirm
+            && matches!(self.selected, Action::Clean | Action::Apps)
+            && key == KeyCode::Char('v')
+            && self.job.as_ref().is_none_or(|j| j.is_finished())
+            && let Some(position) = submenu(self.home_action)
+                .iter()
+                .position(|a| *a == Action::Restore)
+        {
+            self.submenu_cursor = position;
+            self.screen = Screen::Menu;
+            return self.key(KeyCode::Enter);
+        }
         if self.screen == Screen::Result && self.job.as_ref().is_none_or(|j| j.is_finished()) {
             let home = std::env::var_os("HOME")
                 .map(PathBuf::from)
@@ -378,6 +392,10 @@ impl App {
                 KeyCode::Char('c') => self.cancel.store(true, Ordering::Relaxed),
                 KeyCode::Down | KeyCode::Char('j') => self.scroll = self.scroll.saturating_add(1),
                 KeyCode::Up | KeyCode::Char('k') => self.scroll = self.scroll.saturating_sub(1),
+                KeyCode::PageDown => self.scroll = self.scroll.saturating_add(10),
+                KeyCode::PageUp => self.scroll = self.scroll.saturating_sub(10),
+                KeyCode::Home => self.scroll = 0,
+                KeyCode::End => self.scroll = u16::MAX,
                 _ => {}
             }
             return false;
@@ -488,7 +506,10 @@ impl App {
                             .duration_since(std::time::UNIX_EPOCH)
                             .map(|d| d.as_secs())
                             .unwrap_or(0);
-                        format!("Collected at Unix time {timestamp} UTC · r refresh\n\n{text}")
+                        format!(
+                            "Updated {} · r refresh\n\n{text}",
+                            format_timestamp(timestamp)
+                        )
                     } else {
                         text
                     };
@@ -503,6 +524,27 @@ impl App {
 impl Drop for App {
     fn drop(&mut self) {
         self.cancel.store(true, Ordering::Relaxed);
+    }
+}
+fn format_timestamp(timestamp: u64) -> String {
+    let t = timestamp as libc::time_t;
+    let mut value = std::mem::MaybeUninit::<libc::tm>::uninit();
+    let mut buffer = [0u8; 64];
+    // localtime_r fills the caller-owned tm; strftime writes at most buffer.len() bytes.
+    unsafe {
+        if libc::localtime_r(&t, value.as_mut_ptr()).is_null() {
+            return format!("Unix {timestamp} UTC");
+        }
+        let size = libc::strftime(
+            buffer.as_mut_ptr().cast(),
+            buffer.len(),
+            c"%Y-%m-%d %H:%M %Z".as_ptr(),
+            value.as_ptr(),
+        );
+        if size == 0 {
+            return format!("Unix {timestamp} UTC");
+        }
+        String::from_utf8_lossy(&buffer[..size]).into_owned()
     }
 }
 fn completion(report: &Report) -> &'static str {
@@ -634,7 +676,7 @@ fn render(frame: &mut Frame, app: &App) {
                         .filter(|c| optimac::recovery::category(c) == group)
                         .map(|c| {
                             format!(
-                                "[{}] {}  {:?}",
+                                "[{}] {}  {}",
                                 if app.selected_files.contains(&c.path) {
                                     "x"
                                 } else {
@@ -642,6 +684,10 @@ fn render(frame: &mut Frame, app: &App) {
                                 },
                                 optimac::format_size(c.logical_size()),
                                 c.path
+                                    .to_string_lossy()
+                                    .chars()
+                                    .map(|ch| if ch.is_control() { '�' } else { ch })
+                                    .collect::<String>()
                             )
                         })
                         .collect()
@@ -698,8 +744,23 @@ fn render(frame: &mut Frame, app: &App) {
                     .count()
                     .saturating_sub(1)
                     .min(u16::MAX as usize) as u16;
+                let lines: Vec<Line<'_>> = text
+                    .lines()
+                    .map(|line| {
+                        let style = if line.starts_with("  Unavailable:")
+                            || line.contains("partial results")
+                        {
+                            Style::default().fg(Color::Yellow)
+                        } else if !line.starts_with(' ') && !line.is_empty() {
+                            cyan.add_modifier(Modifier::BOLD)
+                        } else {
+                            Style::default()
+                        };
+                        Line::from(Span::styled(line, style))
+                    })
+                    .collect();
                 frame.render_widget(
-                    Paragraph::new(text.as_str())
+                    Paragraph::new(Text::from(lines))
                         .scroll((app.scroll.min(max_scroll), 0))
                         .wrap(Wrap { trim: false })
                         .block(Block::default().title(action_name(app.selected))),
@@ -712,10 +773,16 @@ fn render(frame: &mut Frame, app: &App) {
         "Confirm reviewed operation? y yes · n cancel · ↑/↓ review"
     } else if matches!(app.screen, Screen::Menu | Screen::Home) {
         "↑/↓ move · Enter select · s scope · Esc back · q quit"
+    } else if app.screen == Screen::Result
+        && matches!(app.selected, Action::Clean | Action::Apps)
+        && app.job.as_ref().is_none_or(|j| j.is_finished())
+        && app.plan.lock().unwrap().is_none()
+    {
+        "Esc back · v recovery · ↑/↓ scroll · q quit"
     } else if app.screen == Screen::Result && app.home_action == HomeAction::Status {
-        "Esc back · ↑/↓ scroll · r refresh · c cancel · q quit"
+        "Esc back · ↑/↓ scroll · PgUp/PgDn · r refresh · q quit"
     } else {
-        "Esc back · ↑/↓ move · Enter group · Space select · r review · q quit"
+        "Esc back · ↑/↓ move · PgUp/PgDn · Enter open · Space select · r review"
     };
     frame.render_widget(Paragraph::new(help).style(cyan), footer);
 }
@@ -754,6 +821,17 @@ pub fn run(root: PathBuf, cancel: Arc<AtomicBool>) -> io::Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn result_page_navigation_and_human_time() {
+        let mut app = App::new(".".into());
+        app.screen = Screen::Result;
+        app.selected = Action::Status;
+        app.key(KeyCode::PageDown);
+        assert_eq!(app.scroll, 10);
+        app.key(KeyCode::PageUp);
+        assert_eq!(app.scroll, 0);
+        assert!(!format_timestamp(1_700_000_000).is_empty());
+    }
     #[test]
     fn scope_navigation_and_direct_duplicates_return() {
         let mut app = App::new(".".into());

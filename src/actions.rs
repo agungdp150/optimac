@@ -208,17 +208,36 @@ fn commands(items: &[(&str, &[&str])], cancel: &AtomicBool) -> String {
     let mut result = String::new();
     for (name, args) in items {
         if cancel.load(Ordering::Relaxed) {
-            result.push_str("Cancelled\n");
+            result.push_str("Cancelled — partial results\n");
             break;
         }
-        result.push_str(&format!("\n{name} {}\n", args.join(" ")));
+        let title = match (*name, args.first().copied()) {
+            ("/usr/bin/sw_vers", _) => "macOS",
+            ("/usr/bin/vm_stat", _) => "Memory",
+            ("/usr/sbin/sysctl", Some("vm.swapusage")) => "Swap",
+            ("/usr/sbin/sysctl", _) => "Hardware",
+            ("/bin/df", _) => "Disk volumes",
+            ("/usr/bin/tmutil", _) => "Time Machine snapshots",
+            ("/usr/bin/fdesetup", _) => "FileVault",
+            ("/usr/bin/csrutil", _) => "System Integrity Protection",
+            ("/usr/sbin/spctl", _) => "Gatekeeper",
+            ("/usr/libexec/ApplicationFirewall/socketfilterfw", _) => "Firewall",
+            _ => "Details",
+        };
+        result.push_str(&format!("\n{title}\n"));
         match command(name, args, cancel) {
-            Ok(s) => result.push_str(&s),
-            Err(e) => result.push_str(&format!("Unavailable: {e}\n")),
+            Ok(text) if text.trim().is_empty() => result.push_str("  No information reported\n"),
+            Ok(text) => {
+                for line in text.lines() {
+                    result.push_str(&format!("  {}\n", line.trim()));
+                }
+            }
+            Err(e) => result.push_str(&format!("  Unavailable: {e}\n")),
         }
     }
     result
 }
+
 fn listing(root: &Path) -> String {
     match fs::read_dir(root) {
         Ok(entries) => {
@@ -603,6 +622,19 @@ pub fn run(index: Action, root: &Path, cancel: &AtomicBool) -> io::Result<String
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn diagnostics_use_readable_headings_and_report_failures() {
+        let cancel = AtomicBool::new(false);
+        let result = commands(
+            &[
+                ("/usr/bin/printf", &["example\n"]),
+                ("/not-a-real-optimac-command", &[]),
+            ],
+            &cancel,
+        );
+        assert!(result.contains("Details\n  example"));
+        assert!(result.contains("Unavailable:"));
+    }
     #[test]
     fn subprocess_cancellation_and_failure_are_reported() {
         let cancel = AtomicBool::new(true);
