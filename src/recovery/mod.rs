@@ -511,16 +511,20 @@ pub fn restore(policy: RecoveryPolicy<'_>, home: &Path, id: &str) -> io::Result<
     if unsafe { libc::geteuid() } == 0 {
         return Err(error("Do not restore as root"));
     }
-    let root = recovery_root(policy, home)?;
-    let _lock = operation_lock(&root)?;
-    let dir = root.join(id);
+    policy.require_payload_authority()?;
+    let context = RecoveryContext::initialize(home, policy)?;
+    let _lock = context.lock()?;
+    let dir = context.root.join(id);
     validate_chain(&dir)?;
     let record_path = dir.join("record.json");
     validate_chain(&record_path)?;
     if fs::metadata(&record_path)?.len() > 65536 {
         return Err(error("Invalid recovery record size"));
     }
-    let record: Record = serde_json::from_slice(&fs::read(record_path)?)?;
+    let record = match unit::parse_record(&fs::read(record_path)?)? {
+        unit::StoredRecord::Unit(_) => return context.restore_directory_unit_locked(None, id),
+        unit::StoredRecord::V1(record) => record,
+    };
     if record.version != 1 {
         return Err(error("Unsupported recovery version"));
     }

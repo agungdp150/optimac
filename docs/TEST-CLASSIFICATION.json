@@ -503,12 +503,22 @@
       "review": "classified"
     },
     {
+      "name": "optimac:lib/recovery::unit::tests::directory_unit_interruptions_are_readable_and_never_replayed",
+      "class": "fixture_fs",
+      "review": "passed_under_os_sandbox"
+    },
+    {
       "name": "optimac:lib/recovery::unit::tests::directory_unit_move_refuses_cross_volume_and_changed_identity_before_record",
       "class": "fixture_fs",
       "review": "passed_under_os_sandbox"
     },
     {
       "name": "optimac:lib/recovery::unit::tests::directory_unit_move_restore_keeps_internal_links_and_outside_target",
+      "class": "fixture_fs",
+      "review": "passed_under_os_sandbox"
+    },
+    {
+      "name": "optimac:lib/recovery::unit::tests::directory_unit_restore_refuses_existing_destination_missing_or_symlinked_parent",
       "class": "fixture_fs",
       "review": "passed_under_os_sandbox"
     },

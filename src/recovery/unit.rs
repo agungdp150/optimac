@@ -11,9 +11,9 @@ use super::{
 use crate::fixture_paths::FixtureRoot;
 use serde::{Deserialize, Serialize};
 use std::{
-    ffi::CString,
+    ffi::{CStr, CString},
     fs::File,
-    io::{self, Write},
+    io::{self, Read, Write},
     os::unix::{ffi::OsStrExt, fs::MetadataExt},
     path::{Component, Path, PathBuf},
 };
@@ -22,6 +22,8 @@ pub const UNIT_RECORD_VERSION: u32 = 2;
 pub const UNIT_RECORD_KIND: &str = "plan_directory_unit";
 const PAYLOAD: &str = "payload";
 const MOVE_COMPLETED: &str = "move-completed";
+const RESTORE_INTENT: &str = "restore-intent";
+const RESTORE_COMPLETED: &str = "restore-completed";
 const MAX_RECORD_BYTES: usize = 65536;
 
 /// A durable record for one top-level plan unit moved into recovery.
@@ -135,6 +137,19 @@ pub(super) fn parse_record(bytes: &[u8]) -> io::Result<StoredRecord> {
     }
 }
 
+/// Read `record.json` relative to a pinned record directory without following links.
+pub(super) fn read_record_at(directory: &File) -> io::Result<StoredRecord> {
+    let file = super::context::open_child(directory, "record.json", libc::O_RDONLY)?;
+    let meta = file.metadata()?;
+    if !meta.is_file() || meta.nlink() != 1 || meta.uid() != unsafe { libc::geteuid() } {
+        return Err(error("Unsafe recovery record"));
+    }
+    let mut bytes = Vec::new();
+    file.take(MAX_RECORD_BYTES as u64 + 1)
+        .read_to_end(&mut bytes)?;
+    parse_record(&bytes)
+}
+
 /// Fault injection for interruption and cross-volume tests.
 #[derive(Clone, Copy, Debug, Default)]
 pub(crate) struct Faults {
@@ -158,6 +173,14 @@ fn identity_matches(st: &libc::stat, record: &UnitRecord) -> bool {
         && st.st_uid == unsafe { libc::geteuid() }
 }
 
+fn present(directory: &File, name: &CStr) -> io::Result<Option<libc::stat>> {
+    match stat_at(directory, name) {
+        Ok(st) => Ok(Some(st)),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(e),
+    }
+}
+
 fn write_marker(directory: &File, name: &str, text: &[u8]) -> io::Result<()> {
     let mut file = super::context::open_child(
         directory,
@@ -167,6 +190,16 @@ fn write_marker(directory: &File, name: &str, text: &[u8]) -> io::Result<()> {
     file.write_all(text)?;
     file.sync_all()?;
     directory.sync_all()
+}
+
+fn parent_refusal(e: io::Error) -> io::Error {
+    match e.raw_os_error() {
+        Some(libc::ENOENT) => error("Original parent is missing; restore refused"),
+        Some(libc::ELOOP) | Some(libc::ENOTDIR) => {
+            error("Original parent is a symlink or not a directory; restore refused")
+        }
+        _ => e,
+    }
 }
 
 impl RecoveryContext {
@@ -197,6 +230,17 @@ impl RecoveryContext {
             return Err(error("Recovery lock is not held for this directory"));
         }
         Ok(())
+    }
+
+    fn open_record_dir(&self, id: &str) -> io::Result<File> {
+        valid_id(id)?;
+        let directory =
+            super::context::open_child(&self.directory, id, libc::O_RDONLY | libc::O_DIRECTORY)?;
+        let meta = directory.metadata()?;
+        if meta.uid() != unsafe { libc::geteuid() } || meta.mode() & 0o077 != 0 {
+            return Err(error("Unsafe recovery record directory"));
+        }
+        Ok(directory)
     }
 
     /// Move one plan directory unit into recovery. The caller holds `lock()`.
@@ -259,6 +303,72 @@ impl RecoveryContext {
             return Err(error("Injected interruption after move"));
         }
         write_marker(&directory, MOVE_COMPLETED, b"Move to recovery completed\n")
+    }
+
+    /// Move a directory unit back. Never overwrites, never recreates a missing
+    /// parent and never resolves a symlinked parent.
+    pub fn restore_directory_unit(
+        &self,
+        authority: Option<&FixtureRoot>,
+        id: &str,
+    ) -> io::Result<String> {
+        let _lock = self.lock()?;
+        self.restore_directory_unit_locked(authority, id)
+    }
+
+    pub(super) fn restore_directory_unit_locked(
+        &self,
+        authority: Option<&FixtureRoot>,
+        id: &str,
+    ) -> io::Result<String> {
+        if unsafe { libc::geteuid() } == 0 {
+            return Err(error("Do not restore as root"));
+        }
+        let directory = self.open_record_dir(id)?;
+        let StoredRecord::Unit(record) = read_record_at(&directory)? else {
+            return Err(error("Not a directory-unit record"));
+        };
+        record.validate(&self.home, &self.root)?;
+        let payload = present(&directory, c"payload")?
+            .ok_or_else(|| error("Payload absent; nothing to restore"))?;
+        if !identity_matches(&payload, &record) {
+            return Err(error("Payload identity changed; restore refused"));
+        }
+        let (parent, name) = self
+            .unit_parent(authority, &record.original_path)
+            .map_err(parent_refusal)?;
+        let parent_meta = parent.metadata()?;
+        if !parent_meta.is_dir() {
+            return Err(error(
+                "Original parent is a symlink or not a directory; restore refused",
+            ));
+        }
+        if present(&parent, &name)?.is_some() {
+            return Err(error("Destination exists; restore never overwrites"));
+        }
+        if parent_meta.dev() != payload.st_dev as u64 {
+            return Err(error(
+                "Original parent is on another volume; restore refused",
+            ));
+        }
+        if present(&directory, c"restore-intent")?.is_none() {
+            write_marker(&directory, RESTORE_INTENT, b"Restore requested\n")?;
+        }
+        rename_at_excl(&directory, c"payload", &parent, &name)?;
+        let restored = stat_at(&parent, &name)?;
+        if !identity_matches(&restored, &record) {
+            let rollback = rename_at_excl(&parent, &name, &directory, c"payload");
+            return Err(error(&format!(
+                "Payload changed during restore; rollback {rollback:?}"
+            )));
+        }
+        parent.sync_all()?;
+        directory.sync_all()?;
+        write_marker(&directory, RESTORE_COMPLETED, b"Restore completed\n")?;
+        Ok(format!(
+            "Restored {}; journal retained",
+            record.original_path.display()
+        ))
     }
 }
 
@@ -404,6 +514,18 @@ mod tests {
             serde_json::from_slice(&fs::read(s.record_dir("1001/record.json")).unwrap()).unwrap();
         assert_eq!(stored, r);
         assert_eq!(snapshot(&s.record_dir("1001/payload")), before);
+        assert!(
+            s.context
+                .restore_directory_unit(Some(&s.cap), "1001")
+                .unwrap()
+                .contains("Restored")
+        );
+        assert_eq!(snapshot(&s.unit), before);
+        assert!(
+            s.context
+                .restore_directory_unit(Some(&s.cap), "1001")
+                .is_err()
+        );
         fs::set_permissions(&s.outside, fs::Permissions::from_mode(0o700)).unwrap();
         let outside_after = fs::symlink_metadata(s.outside.join("profile/secret")).unwrap();
         assert_eq!(
@@ -423,9 +545,60 @@ mod tests {
             b"outside"
         );
         assert_eq!(
-            fs::read_link(s.record_dir("1001/payload/external-profile")).unwrap(),
+            fs::read_link(s.unit.join("external-profile")).unwrap(),
             s.outside.join("profile")
         );
+    }
+
+    #[test]
+    fn directory_unit_restore_refuses_existing_destination_missing_or_symlinked_parent() {
+        let s = Setup::new();
+        let before = snapshot(&s.unit);
+        let lock = s.context.lock().unwrap();
+        s.context
+            .move_directory_unit(&lock, Some(&s.cap), "2001", &record(&s.unit))
+            .unwrap();
+        drop(lock);
+        fs::create_dir(&s.unit).unwrap();
+        fs::write(s.unit.join("new"), b"new content").unwrap();
+        let err = s
+            .context
+            .restore_directory_unit(Some(&s.cap), "2001")
+            .unwrap_err();
+        assert!(err.to_string().contains("Destination exists"), "{err}");
+        assert_eq!(fs::read(s.unit.join("new")).unwrap(), b"new content");
+        assert!(s.record_dir("2001/payload").is_dir());
+        fs::remove_dir_all(&s.unit).unwrap();
+
+        let parent = s.unit.parent().unwrap().to_path_buf();
+        let moved_parent = s.home.join("moved-parent");
+        fs::rename(&parent, &moved_parent).unwrap();
+        let err = s
+            .context
+            .restore_directory_unit(Some(&s.cap), "2001")
+            .unwrap_err();
+        assert!(err.to_string().contains("parent is missing"), "{err}");
+        assert!(!parent.exists());
+
+        symlink(&moved_parent, &parent).unwrap();
+        let err = s
+            .context
+            .restore_directory_unit(Some(&s.cap), "2001")
+            .unwrap_err();
+        assert!(err.to_string().contains("symlink"), "{err}");
+        assert_eq!(fs::read_dir(&moved_parent).unwrap().count(), 0);
+        assert!(s.record_dir("2001/payload").is_dir());
+        assert_eq!(
+            listing(&s.record_dir("2001")),
+            ["move-completed", "payload", "record.json"]
+        );
+
+        fs::remove_file(&parent).unwrap();
+        fs::rename(&moved_parent, &parent).unwrap();
+        s.context
+            .restore_directory_unit(Some(&s.cap), "2001")
+            .unwrap();
+        assert_eq!(snapshot(&s.unit), before);
     }
 
     #[test]
@@ -473,6 +646,52 @@ mod tests {
         );
         assert_eq!(listing(&s.home.join(".optimac-rust-recovery")), [".lock"]);
         assert_eq!(snapshot(&s.unit), before);
+    }
+
+    #[test]
+    fn directory_unit_interruptions_are_readable_and_never_replayed() {
+        let s = Setup::new();
+        let before = snapshot(&s.unit);
+        let r = record(&s.unit);
+        let lock = s.context.lock().unwrap();
+        let crash = Faults {
+            stop_after_record: true,
+            ..Faults::default()
+        };
+        assert!(
+            s.context
+                .move_directory_unit_with(&lock, Some(&s.cap), "4001", &r, crash)
+                .is_err()
+        );
+        drop(lock);
+        assert_eq!(listing(&s.record_dir("4001")), ["record.json"]);
+        assert!(
+            s.context
+                .restore_directory_unit(Some(&s.cap), "4001")
+                .is_err()
+        );
+        assert_eq!(listing(&s.record_dir("4001")), ["record.json"]);
+        assert_eq!(snapshot(&s.unit), before);
+
+        let lock = s.context.lock().unwrap();
+        let crash = Faults {
+            stop_after_move: true,
+            ..Faults::default()
+        };
+        assert!(
+            s.context
+                .move_directory_unit_with(&lock, Some(&s.cap), "4002", &r, crash)
+                .is_err()
+        );
+        drop(lock);
+        assert_eq!(listing(&s.record_dir("4002")), ["payload", "record.json"]);
+        assert_eq!(listing(&s.record_dir("4002")), ["payload", "record.json"]);
+        assert!(!s.unit.exists());
+        s.context
+            .restore_directory_unit(Some(&s.cap), "4002")
+            .unwrap();
+        assert_eq!(snapshot(&s.unit), before);
+        assert_eq!(listing(&s.record_dir("4001")), ["record.json"]);
     }
 
     #[test]
