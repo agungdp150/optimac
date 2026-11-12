@@ -188,6 +188,31 @@
       "review": "passed_under_os_sandbox"
     },
     {
+      "name": "optimac:lib/cleanup::apply::tests::apply_declined_confirmation_changes_nothing",
+      "class": "fixture_fs",
+      "review": "passed_under_os_sandbox"
+    },
+    {
+      "name": "optimac:lib/cleanup::apply::tests::apply_interruption_leaves_readable_states_and_never_replays",
+      "class": "fixture_fs",
+      "review": "passed_under_os_sandbox"
+    },
+    {
+      "name": "optimac:lib/cleanup::apply::tests::apply_moves_reviewed_units_reports_results_then_restores",
+      "class": "fixture_fs",
+      "review": "passed_under_os_sandbox"
+    },
+    {
+      "name": "optimac:lib/cleanup::apply::tests::apply_partial_completion_reports_unfinished_units",
+      "class": "fixture_fs",
+      "review": "passed_under_os_sandbox"
+    },
+    {
+      "name": "optimac:lib/cleanup::apply::tests::apply_skips_in_use_unknown_and_newly_active_units",
+      "class": "fixture_fs",
+      "review": "passed_under_os_sandbox"
+    },
+    {
       "name": "optimac:lib/cleanup::apply_validation::tests::apply_revalidation_allows_internal_links_but_refuses_unit_and_ancestor_links",
       "class": "fixture_fs",
       "review": "passed_under_os_sandbox"

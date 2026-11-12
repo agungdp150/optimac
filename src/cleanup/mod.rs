@@ -12,6 +12,7 @@ use std::{
 mod access;
 mod accounting;
 pub mod activity;
+pub mod apply;
 pub mod apply_validation;
 pub mod category;
 pub mod config;

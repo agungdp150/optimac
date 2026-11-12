@@ -15,6 +15,7 @@ use std::{
 
 pub const SCHEMA_VERSION: u32 = 1;
 const MAX_BYTES: u64 = 16 * 1024 * 1024;
+const JOURNAL_SUFFIX: &str = ".apply-journal";
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
@@ -285,6 +286,68 @@ impl PlanStore {
         let dest = CString::new(format!("{}.json", plan.plan_id))?;
         publish(&self.directory, &temp, &dest)?;
         self.directory.sync_all()
+    }
+    /// The append-only apply journal for a plan, if one was ever started.
+    pub fn read_apply_journal(&self, id: &str) -> io::Result<Option<Vec<u8>>> {
+        if !valid_id(id) {
+            return Err(io::Error::other("Invalid plan ID"));
+        }
+        let name = CString::new(format!("{id}{JOURNAL_SUFFIX}"))?;
+        let fd = unsafe {
+            libc::openat(
+                self.directory.as_raw_fd(),
+                name.as_ptr(),
+                libc::O_RDONLY | libc::O_NOFOLLOW | libc::O_NONBLOCK | libc::O_CLOEXEC,
+            )
+        };
+        if fd < 0 {
+            let error = io::Error::last_os_error();
+            return if error.kind() == io::ErrorKind::NotFound {
+                Ok(None)
+            } else {
+                Err(error)
+            };
+        }
+        let file = unsafe { File::from_raw_fd(fd) };
+        let m = file.metadata()?;
+        if !m.is_file()
+            || m.nlink() != 1
+            || m.uid() != unsafe { libc::geteuid() }
+            || m.mode() & 0o077 != 0
+            || m.len() > MAX_BYTES
+        {
+            return Err(io::Error::other("Unsafe or oversized apply journal"));
+        }
+        let mut bytes = Vec::new();
+        file.take(MAX_BYTES + 1).read_to_end(&mut bytes)?;
+        Ok(Some(bytes))
+    }
+    /// Create a plan's apply journal exactly once; an existing journal means
+    /// the plan was already applied or interrupted and is never reused.
+    pub fn create_apply_journal(&self, id: &str) -> io::Result<File> {
+        if !valid_id(id) {
+            return Err(io::Error::other("Invalid plan ID"));
+        }
+        let name = CString::new(format!("{id}{JOURNAL_SUFFIX}"))?;
+        let fd = unsafe {
+            libc::openat(
+                self.directory.as_raw_fd(),
+                name.as_ptr(),
+                libc::O_WRONLY
+                    | libc::O_CREAT
+                    | libc::O_EXCL
+                    | libc::O_APPEND
+                    | libc::O_NOFOLLOW
+                    | libc::O_CLOEXEC,
+                0o600,
+            )
+        };
+        if fd < 0 {
+            return Err(io::Error::last_os_error());
+        }
+        let file = unsafe { File::from_raw_fd(fd) };
+        self.directory.sync_all()?;
+        Ok(file)
     }
     pub fn list(&self) -> io::Result<Vec<StoredPlan>> {
         // Open an independent directory cursor relative to the pinned directory.
