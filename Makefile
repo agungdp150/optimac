@@ -28,3 +28,7 @@ test-classification:
 .PHONY: test-fast
 test-fast:
 	./scripts/test-safe.sh
+
+.PHONY: test-recovery-isolated
+test-recovery-isolated:
+	python3 scripts/test-sandboxed.py --recovery-only

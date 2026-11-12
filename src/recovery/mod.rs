@@ -554,6 +554,7 @@ pub fn restore(policy: RecoveryPolicy<'_>, home: &Path, id: &str) -> io::Result<
 mod tests {
     use super::*;
     #[test]
+    #[ignore = "Requires production recovery policy; run make test-recovery-isolated under OS sandbox"]
     fn personal_selection_moves_only_reviewed_file_and_restores() {
         let root = std::env::temp_dir()
             .canonicalize()
@@ -620,6 +621,7 @@ mod tests {
         assert!(select_categories(&plan, &excluded).items.is_empty());
     }
     #[test]
+    #[ignore = "Requires production recovery policy; run make test-recovery-isolated under OS sandbox"]
     fn app_bundle_roundtrip_and_changed_candidate_refusal() {
         let root = std::env::temp_dir()
             .canonicalize()
@@ -681,6 +683,7 @@ mod tests {
         fs::remove_dir_all(root).unwrap();
     }
     #[test]
+    #[ignore = "Requires production recovery policy; run make test-recovery-isolated under OS sandbox"]
     fn recover_without_overwriting() {
         let root = std::env::temp_dir()
             .canonicalize()

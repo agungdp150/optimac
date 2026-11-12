@@ -5,212 +5,212 @@
     {
       "name": "cli:test/analysis_and_duplicates_use_disposable_fixtures",
       "class": "fixture_fs",
-      "review": "unreviewed"
+      "review": "passed_under_os_sandbox"
     },
     {
       "name": "cli:test/artifact_sizes_sum_scanned_files",
       "class": "fixture_fs",
-      "review": "unreviewed"
+      "review": "passed_under_os_sandbox"
     },
     {
       "name": "cli:test/clean_plan_cli_respects_config_exclusions_and_keeps_files_unchanged",
       "class": "fixture_fs",
-      "review": "unreviewed"
+      "review": "passed_under_os_sandbox"
     },
     {
       "name": "cli:test/cleanup_inventory_json_is_read_only_and_reports_unknown_roots",
       "class": "fixture_fs",
-      "review": "unreviewed"
+      "review": "passed_under_os_sandbox"
     },
     {
       "name": "cli:test/configured_inventory_applies_scopes_and_exclusions",
       "class": "fixture_fs",
-      "review": "unreviewed"
+      "review": "passed_under_os_sandbox"
     },
     {
       "name": "cli:test/fixture_cli_rejects_missing_executable",
       "class": "fixture_fs",
-      "review": "unreviewed"
+      "review": "passed_under_os_sandbox"
     },
     {
       "name": "cli:test/fixture_paths_are_used_by_cli_history",
       "class": "fixture_fs",
-      "review": "unreviewed"
+      "review": "passed_under_os_sandbox"
     },
     {
       "name": "cli:test/fixture_recovery_cli_cannot_select_production_policy",
       "class": "fixture_fs",
-      "review": "unreviewed"
+      "review": "passed_under_os_sandbox"
     },
     {
       "name": "cli:test/invalid_class_is_usage_error_before_scanning",
       "class": "fixture_fs",
-      "review": "unreviewed"
+      "review": "passed_under_os_sandbox"
     },
     {
       "name": "cli:test/legacy_mutations_fail_explicitly",
       "class": "fixture_fs",
-      "review": "unreviewed"
+      "review": "passed_under_os_sandbox"
     },
     {
       "name": "cli:test/retired_commands_explain_why",
       "class": "fixture_fs",
-      "review": "unreviewed"
+      "review": "passed_under_os_sandbox"
     },
     {
       "name": "cli:test/version_matches_manifest",
       "class": "fixture_fs",
-      "review": "unreviewed"
+      "review": "passed_under_os_sandbox"
     },
     {
       "name": "optimac:bin/ui::status::tests::detail_pages_are_readable_and_resize",
       "class": "fixture_fs",
-      "review": "unreviewed"
+      "review": "passed_under_os_sandbox"
     },
     {
       "name": "optimac:bin/ui::status::tests::renders_at_all_sizes",
       "class": "fixture_fs",
-      "review": "unreviewed"
+      "review": "passed_under_os_sandbox"
     },
     {
       "name": "optimac:bin/ui::status::tests::rows_are_compact_and_do_not_expose_full_paths",
       "class": "fixture_fs",
-      "review": "unreviewed"
+      "review": "passed_under_os_sandbox"
     },
     {
       "name": "optimac:bin/ui::tests::all_screens_resize_and_selected_item_stays_visible",
       "class": "fixture_fs",
-      "review": "unreviewed"
+      "review": "passed_under_os_sandbox"
     },
     {
       "name": "optimac:bin/ui::tests::automatically_selects_only_cache_candidates_before_review",
       "class": "fixture_fs",
-      "review": "unreviewed"
+      "review": "passed_under_os_sandbox"
     },
     {
       "name": "optimac:bin/ui::tests::cleanup_progress_renders_at_various_terminal_sizes",
       "class": "fixture_fs",
-      "review": "unreviewed"
+      "review": "passed_under_os_sandbox"
     },
     {
       "name": "optimac:bin/ui::tests::cleanup_requires_explicit_confirmation",
       "class": "fixture_fs",
-      "review": "unreviewed"
+      "review": "passed_under_os_sandbox"
     },
     {
       "name": "optimac:bin/ui::tests::configured_inventory_runs_in_menu_without_default_roots",
       "class": "fixture_fs",
-      "review": "unreviewed"
+      "review": "passed_under_os_sandbox"
     },
     {
       "name": "optimac:bin/ui::tests::home_and_submenus_map_without_launching_mutations",
       "class": "fixture_fs",
-      "review": "unreviewed"
+      "review": "passed_under_os_sandbox"
     },
     {
       "name": "optimac:bin/ui::tests::limited_scan_is_not_called_complete",
       "class": "fixture_fs",
-      "review": "unreviewed"
+      "review": "passed_under_os_sandbox"
     },
     {
       "name": "optimac:bin/ui::tests::menu_navigation_and_background_actions",
       "class": "fixture_fs",
-      "review": "unreviewed"
+      "review": "passed_under_os_sandbox"
     },
     {
       "name": "optimac:bin/ui::tests::missing_fixture_home_fails_closed",
       "class": "fixture_fs",
-      "review": "unreviewed"
+      "review": "passed_under_os_sandbox"
     },
     {
       "name": "optimac:bin/ui::tests::result_page_navigation_and_human_time",
       "class": "fixture_fs",
-      "review": "unreviewed"
+      "review": "passed_under_os_sandbox"
     },
     {
       "name": "optimac:bin/ui::tests::scope_navigation_and_direct_duplicates_return",
       "class": "fixture_fs",
-      "review": "unreviewed"
+      "review": "passed_under_os_sandbox"
     },
     {
       "name": "optimac:bin/ui::tests::selected_files_are_frozen_for_confirmation",
       "class": "fixture_fs",
-      "review": "unreviewed"
+      "review": "passed_under_os_sandbox"
     },
     {
       "name": "optimac:bin/ui::tests::status_refresh_keeps_previous_values_and_does_not_overlap",
       "class": "fixture_fs",
-      "review": "unreviewed"
+      "review": "passed_under_os_sandbox"
     },
     {
       "name": "optimac:lib/actions::process::tests::output_is_bounded_and_untrusted_path_is_not_searched",
       "class": "fixture_fs",
-      "review": "unreviewed"
+      "review": "passed_under_os_sandbox"
     },
     {
       "name": "optimac:lib/actions::process::tests::structured_output_preserves_streams_exit_and_timeout_output",
       "class": "fixture_fs",
-      "review": "unreviewed"
+      "review": "passed_under_os_sandbox"
     },
     {
       "name": "optimac:lib/actions::status::tests::parse_measurements",
       "class": "fixture_fs",
-      "review": "unreviewed"
+      "review": "passed_under_os_sandbox"
     },
     {
       "name": "optimac:lib/actions::tests::byte_comparison_is_exact_and_cancellable",
       "class": "fixture_fs",
-      "review": "unreviewed"
+      "review": "passed_under_os_sandbox"
     },
     {
       "name": "optimac:lib/actions::tests::diagnostics_use_readable_headings_and_report_failures",
       "class": "fixture_fs",
-      "review": "unreviewed"
+      "review": "passed_under_os_sandbox"
     },
     {
       "name": "optimac:lib/actions::tests::subprocess_cancellation_and_failure_are_reported",
       "class": "fixture_fs",
-      "review": "unreviewed"
+      "review": "passed_under_os_sandbox"
     },
     {
       "name": "optimac:lib/cleanup::category::tests::browser_specific_mapping_partial_and_denied_trash",
       "class": "fixture_fs",
-      "review": "unreviewed"
+      "review": "passed_under_os_sandbox"
     },
     {
       "name": "optimac:lib/cleanup::category::tests::every_shipped_provider_is_explicitly_mapped",
       "class": "fixture_fs",
-      "review": "unreviewed"
+      "review": "passed_under_os_sandbox"
     },
     {
       "name": "optimac:lib/cleanup::config::readme_tests::documented_project_scope_example_parses",
       "class": "fixture_fs",
-      "review": "unreviewed"
+      "review": "passed_under_os_sandbox"
     },
     {
       "name": "optimac:lib/cleanup::config::tests::example_and_invalid_overlays",
       "class": "fixture_fs",
-      "review": "unreviewed"
+      "review": "passed_under_os_sandbox"
     },
     {
       "name": "optimac:lib/cleanup::go::tests::fake_go_resolves_both_and_preserves_overrides",
       "class": "fixture_fs",
-      "review": "unreviewed"
+      "review": "passed_under_os_sandbox"
     },
     {
       "name": "optimac:lib/cleanup::pip::tests::rejects_symlink_and_writable_parent_without_running_candidate",
       "class": "fixture_fs",
-      "review": "unreviewed"
+      "review": "passed_under_os_sandbox"
     },
     {
       "name": "optimac:lib/cleanup::pip::tests::resolves_fake_pip_environment_failure_and_default",
       "class": "fixture_fs",
-      "review": "unreviewed"
+      "review": "passed_under_os_sandbox"
     },
     {
       "name": "optimac:lib/cleanup::plan::tests::clean_plan_groups_and_excludes_unknown_denied_partial_unverified_and_overlaps",
       "class": "fixture_fs",
-      "review": "unreviewed"
+      "review": "passed_under_os_sandbox"
     },
     {
       "name": "optimac:lib/cleanup::scan::mount_tests::device_boundary_comparison_does_not_authorize_crossing",
@@ -225,42 +225,42 @@
     {
       "name": "optimac:lib/cleanup::tests::advanced_storage_is_inventory_only",
       "class": "fixture_fs",
-      "review": "unreviewed"
+      "review": "passed_under_os_sandbox"
     },
     {
       "name": "optimac:lib/cleanup::tests::application_support_logs_and_orbstack_are_review_only",
       "class": "fixture_fs",
-      "review": "unreviewed"
+      "review": "passed_under_os_sandbox"
     },
     {
       "name": "optimac:lib/cleanup::tests::catalog_never_certifies_proposed_operations",
       "class": "fixture_fs",
-      "review": "unreviewed"
+      "review": "passed_under_os_sandbox"
     },
     {
       "name": "optimac:lib/cleanup::tests::class_groups_keep_review_separate_and_mark_incomplete",
       "class": "fixture_fs",
-      "review": "unreviewed"
+      "review": "passed_under_os_sandbox"
     },
     {
       "name": "optimac:lib/cleanup::tests::configured_budgets_are_applied",
       "class": "fixture_fs",
-      "review": "unreviewed"
+      "review": "passed_under_os_sandbox"
     },
     {
       "name": "optimac:lib/cleanup::tests::configured_generic_caches_do_not_override_specific_provider",
       "class": "fixture_fs",
-      "review": "unreviewed"
+      "review": "passed_under_os_sandbox"
     },
     {
       "name": "optimac:lib/cleanup::tests::configured_roots_use_environment_and_refuse_invalid_overrides",
       "class": "fixture_fs",
-      "review": "unreviewed"
+      "review": "passed_under_os_sandbox"
     },
     {
       "name": "optimac:lib/cleanup::tests::configured_scopes_exclude_before_traversal_and_reject_escape",
       "class": "fixture_fs",
-      "review": "unreviewed"
+      "review": "passed_under_os_sandbox"
     },
     {
       "name": "optimac:lib/cleanup::tests::developer_environment_roots_are_explicit_and_safe",
@@ -270,77 +270,77 @@
     {
       "name": "optimac:lib/cleanup::tests::fair_shares_reach_later_roots_and_emit_progress",
       "class": "fixture_fs",
-      "review": "unreviewed"
+      "review": "passed_under_os_sandbox"
     },
     {
       "name": "optimac:lib/cleanup::tests::full_scan_refused_probes_still_measure_default_roots",
       "class": "fixture_fs",
-      "review": "unreviewed"
+      "review": "passed_under_os_sandbox"
     },
     {
       "name": "optimac:lib/cleanup::tests::invalid_schema_controls_fail_during_check",
       "class": "fixture_fs",
-      "review": "unreviewed"
+      "review": "passed_under_os_sandbox"
     },
     {
       "name": "optimac:lib/cleanup::tests::inventory_preserves_data_counts_hardlinks_once_and_excludes_apple",
       "class": "fixture_fs",
-      "review": "unreviewed"
+      "review": "passed_under_os_sandbox"
     },
     {
       "name": "optimac:lib/cleanup::tests::known_orbstack_virtual_view_is_skipped_without_following_symlink",
       "class": "fixture_fs",
-      "review": "unreviewed"
+      "review": "passed_under_os_sandbox"
     },
     {
       "name": "optimac:lib/cleanup::tests::preflight_denial_and_retry_with_disposable_root",
       "class": "fixture_fs",
-      "review": "unreviewed"
+      "review": "passed_under_os_sandbox"
     },
     {
       "name": "optimac:lib/cleanup::tests::preflight_reports_absent_and_retry_guidance_without_claiming_fda",
       "class": "fixture_fs",
-      "review": "unreviewed"
+      "review": "passed_under_os_sandbox"
     },
     {
       "name": "optimac:lib/cleanup::tests::project_discovery_requires_marker_and_preserves_source",
       "class": "fixture_fs",
-      "review": "unreviewed"
+      "review": "passed_under_os_sandbox"
     },
     {
       "name": "optimac:lib/cleanup::tests::root_state_change_after_preflight_is_rechecked",
       "class": "fixture_fs",
-      "review": "unreviewed"
+      "review": "passed_under_os_sandbox"
     },
     {
       "name": "optimac:lib/cleanup::tests::root_validation_refuses_parent_traversal",
       "class": "fixture_fs",
-      "review": "unreviewed"
+      "review": "passed_under_os_sandbox"
     },
     {
       "name": "optimac:lib/cleanup::tests::specific_macos_caches_are_not_double_counted",
       "class": "fixture_fs",
-      "review": "unreviewed"
+      "review": "passed_under_os_sandbox"
     },
     {
       "name": "optimac:lib/cleanup::tests::summary_sorts_and_marks_incomplete_totals",
       "class": "fixture_fs",
-      "review": "unreviewed"
+      "review": "passed_under_os_sandbox"
     },
     {
       "name": "optimac:lib/cleanup::trust::tests::candidates_are_absolute_and_unknown_providers_are_rejected",
       "class": "fixture_fs",
-      "review": "unreviewed"
+      "review": "passed_under_os_sandbox"
     },
     {
       "name": "optimac:lib/cleanup::trust::tests::schema_round_trip_and_malformed_records",
       "class": "fixture_fs",
-      "review": "unreviewed"
+      "review": "passed_under_os_sandbox"
     },
     {
       "name": "optimac:lib/cleanup::trust::tests::store_parser_rejects_corruption_and_future_schema",
       "class": "fixture_fs",
-      "review": "unreviewed"
+      "review": "passed_under_os_sandbox"
     },
     {
       "name": "optimac:lib/common::categories::tests::broad_groups",
@@ -355,67 +355,67 @@
     {
       "name": "optimac:lib/common::scan::tests::counts_metadata_without_following_links_and_honors_limits",
       "class": "fixture_fs",
-      "review": "unreviewed"
+      "review": "passed_under_os_sandbox"
     },
     {
       "name": "optimac:lib/fixture_paths::recovery_tests::fixture_recovery_initialization_requires_authorization",
       "class": "fixture_fs",
-      "review": "unreviewed"
+      "review": "passed_under_os_sandbox"
     },
     {
       "name": "optimac:lib/fixture_paths::tests::fixture_capability_rejects_escape_and_symlink_without_mutation",
       "class": "fixture_fs",
-      "review": "unreviewed"
+      "review": "passed_under_os_sandbox"
     },
     {
       "name": "optimac:lib/paths::tests::injected_paths_resolve_consistently_and_missing_home_fails_closed",
       "class": "fixture_fs",
-      "review": "unreviewed"
+      "review": "passed_under_os_sandbox"
     },
     {
       "name": "optimac:lib/recovery::context::tests::fixture_recovery_build_refuses_explicit_production_policy",
       "class": "fixture_fs",
-      "review": "unreviewed"
+      "review": "passed_under_os_sandbox"
     },
     {
       "name": "optimac:lib/recovery::context::tests::fixture_recovery_context_rejects_missing_outside_and_symlink_authority",
       "class": "fixture_fs",
-      "review": "unreviewed"
+      "review": "passed_under_os_sandbox"
     },
     {
       "name": "optimac:lib/recovery::context::tests::fixture_recovery_entry_points_fail_closed_without_payload_authority",
       "class": "fixture_fs",
-      "review": "unreviewed"
+      "review": "passed_under_os_sandbox"
     },
     {
       "name": "optimac:lib/recovery::context::tests::fixture_recovery_payload_move_refuses_changed_source_and_destination_link",
       "class": "fixture_fs",
-      "review": "unreviewed"
+      "review": "passed_under_os_sandbox"
     },
     {
       "name": "optimac:lib/recovery::context::tests::fixture_recovery_payload_move_rejects_escapes_and_missing_authority",
       "class": "fixture_fs",
-      "review": "unreviewed"
+      "review": "passed_under_os_sandbox"
     },
     {
       "name": "optimac:lib/recovery::context::tests::fixture_recovery_payload_move_succeeds_and_refuses_overwrite",
       "class": "fixture_fs",
-      "review": "unreviewed"
+      "review": "passed_under_os_sandbox"
     },
     {
       "name": "optimac:lib/recovery::context::tests::recovery_journal_fixture_rejects_escape_and_pins_directory",
       "class": "fixture_fs",
-      "review": "unreviewed"
+      "review": "passed_under_os_sandbox"
     },
     {
       "name": "optimac:lib/recovery::context::tests::recovery_lock_fixture_is_relative_exclusive_and_refuses_links",
       "class": "fixture_fs",
-      "review": "unreviewed"
+      "review": "passed_under_os_sandbox"
     },
     {
       "name": "optimac:lib/recovery::purge::authorization_tests::fixture_recovery_purge_execute_rejects_before_metadata_writes",
       "class": "fixture_fs",
-      "review": "unreviewed"
+      "review": "passed_under_os_sandbox"
     },
     {
       "name": "optimac:lib/recovery::purge::tests::purge_removes_only_reviewed_recovery_payload",
@@ -430,7 +430,7 @@
     {
       "name": "optimac:lib/recovery::tests::category_selection_keeps_exact_files_and_totals",
       "class": "fixture_fs",
-      "review": "unreviewed"
+      "review": "passed_under_os_sandbox"
     },
     {
       "name": "optimac:lib/recovery::tests::personal_selection_moves_only_reviewed_file_and_restores",
@@ -440,7 +440,7 @@
     {
       "name": "optimac:lib/recovery::tests::preview_refuses_symlinks_and_recent_files",
       "class": "fixture_fs",
-      "review": "unreviewed"
+      "review": "passed_under_os_sandbox"
     },
     {
       "name": "optimac:lib/recovery::tests::recover_without_overwriting",

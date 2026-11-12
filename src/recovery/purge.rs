@@ -236,6 +236,7 @@ pub fn inspect(policy: RecoveryPolicy<'_>, home: &Path, id: &str) -> io::Result<
 mod tests {
     use super::*;
     #[test]
+    #[ignore = "Requires production recovery policy; run make test-recovery-isolated under OS sandbox"]
     fn purge_removes_only_reviewed_recovery_payload() {
         let home = std::env::temp_dir()
             .canonicalize()

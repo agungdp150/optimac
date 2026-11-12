@@ -121,10 +121,7 @@ impl FixtureRoot {
         use std::os::unix::fs::DirBuilderExt;
         use std::sync::atomic::{AtomicU64, Ordering};
         static NEXT: AtomicU64 = AtomicU64::new(0);
-        #[cfg(target_os = "macos")]
-        let base = Path::new("/private/tmp");
-        #[cfg(not(target_os = "macos"))]
-        let base = Path::new("/tmp");
+        let base = std::env::temp_dir().canonicalize()?;
         let nonce = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map_err(io::Error::other)?

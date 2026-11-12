@@ -3,6 +3,7 @@
 import argparse
 import json
 import os
+import re
 from pathlib import Path
 import subprocess
 import tempfile
@@ -34,12 +35,13 @@ def run():
     parser = argparse.ArgumentParser()
     parser.add_argument('--list-only', action='store_true')
     parser.add_argument('--canary-only', action='store_true')
+    parser.add_argument('--recovery-only', action='store_true')
     args = parser.parse_args()
     if sys.platform != 'darwin' or not Path(SANDBOX).is_file():
         raise RuntimeError('sandbox-exec is required; environment-only isolation is forbidden')
     home = Path.home().resolve()
-    build = subprocess.run(['cargo', 'test', '--locked', '--features', 'fixture-only',
-                            '--tests', '--no-run', '--message-format=json'], cwd=ROOT,
+    selection = ['--lib'] if args.recovery_only else ['--features', 'fixture-only', '--tests']
+    build = subprocess.run(['cargo', 'test', '--locked', *selection, '--no-run', '--message-format=json'], cwd=ROOT,
                            text=True, stdout=subprocess.PIPE, check=True)
     executables = []
     for line in build.stdout.splitlines():
@@ -52,7 +54,7 @@ def run():
     target = ROOT / 'target/debug'
     if any(not exe.is_relative_to(target) for exe in executables):
         raise RuntimeError('Unexpected artifact location; refusing to broaden sandbox reads')
-    with tempfile.TemporaryDirectory(prefix='optimac-sandbox-', dir='/private/tmp') as temporary:
+    with tempfile.TemporaryDirectory(prefix='optimac-sandbox-', dir=tempfile.gettempdir()) as temporary:
         temp = Path(temporary).resolve()
         for child in ['home', 'tmp', 'config', 'cache', 'data', 'state', 'runtime']:
             (temp / child).mkdir(mode=0o700)
@@ -108,10 +110,17 @@ fn main() {
             return
         before = recovery_metadata(recovery)
         failures = []
+        passed = ignored = 0
         try:
             for exe in executables:
                 try:
-                    print(isolated([str(exe)]), flush=True)
+                    output = isolated([str(exe), *(['--ignored'] if args.recovery_only else [])])
+                    print(output, flush=True)
+                    summary = re.search(r'test result: ok\. (\d+) passed; \d+ failed; (\d+) ignored;', output)
+                    if not summary:
+                        raise RuntimeError('Missing test result summary')
+                    passed += int(summary[1])
+                    ignored += int(summary[2])
                 except RuntimeError as error:
                     failures.append(str(error))
                     print(error, file=sys.stderr, flush=True)
@@ -122,7 +131,7 @@ fn main() {
             print(f'Real recovery metadata unchanged ({len(before)} entries)', flush=True)
         if failures:
             raise RuntimeError(f'{len(failures)} test harnesses failed; full suite is not green')
-        print(f'Sandboxed full suite complete: {count} listed tests (see harness ignored counts)')
+        print(f'Sandboxed suite complete: {count} listed, {passed} passed, {ignored} ignored')
 
 
 if __name__ == '__main__':
