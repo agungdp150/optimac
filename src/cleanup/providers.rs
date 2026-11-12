@@ -102,8 +102,22 @@ pub fn inventory_with_progress(
     validate(home)?;
     let deadline = Instant::now() + budget.total;
     let mut roots = Vec::new();
-    // Metadata hints only: no tool execution, config evaluation or network access.
+    let pip = super::pip::resolve(home, cancel);
     for &(id, relative) in super::registry::ROOTS {
+        if id == "pip-cache" {
+            let mut r = row(
+                id,
+                pip.path
+                    .clone()
+                    .unwrap_or_else(|| home.join("Library/Caches/pip")),
+            );
+            r.note = format!("pip {}: {}", pip.status, pip.detail);
+            if pip.path.is_none() {
+                r.status = Status::Blocked;
+            }
+            roots.push(r);
+            continue;
+        }
         match super::registry::resolve(home, id, relative, |key| std::env::var_os(key)) {
             Ok(root) => roots.push(row(id, root)),
             Err(e) => {
@@ -181,7 +195,7 @@ pub fn inventory_with_progress(
         .all(|r| matches!(r.status, Status::Complete | Status::Absent));
     Ok(Inventory { schema_version:1,read_only:true,providers:reports,available_bytes:available(home),complete,
         capabilities:catalog(), notes:vec!["Inventory only. No cleanup targets selected; no files moved or deleted.".into(),
-        "Environment overrides are honored for supported tools; other tool configuration and executable discovery are not yet supported.".into(),
+        "Pip discovery may run a fixed candidate; other tool configuration discovery remains limited to environment and default hints.".into(),
         "Apple-owned generic cache directories are excluded. Allocated bytes exclude directory metadata and may share APFS extents; neither size is guaranteed reclaimable.".into(),
         "Denied sizes are unknown. macOS privacy, ownership or ACL restrictions may limit coverage. Check System Settings > Privacy & Security > Full Disk Access for the launching terminal/app where appropriate, then restart and retry.".into(),
         "Docker Desktop storage is a filesystem estimate only: image, container, volume and build-cache usage are not separated. No Docker daemon is contacted.".into(),
@@ -206,7 +220,21 @@ pub fn configured_inventory_with_progress(
     progress: &mut dyn FnMut(&ProviderReport),
 ) -> io::Result<Inventory> {
     let budget = config.scan_budget(budget)?;
-    let jobs = config.jobs(home)?;
+    let pip_enabled = config
+        .value
+        .get("rule")
+        .and_then(toml::Value::as_array)
+        .is_some_and(|rules| {
+            rules.iter().any(|r| {
+                r.get("id").and_then(toml::Value::as_str) == Some("pip")
+                    && r.get("enabled")
+                        .or_else(|| config.value.get("defaults").and_then(|d| d.get("enabled")))
+                        .and_then(toml::Value::as_bool)
+                        == Some(true)
+            })
+        });
+    let pip = pip_enabled.then(|| super::pip::resolve(home, cancel));
+    let jobs = config.jobs(home, pip.as_ref())?;
     let claims: Vec<_> = super::registry::ROOTS
         .iter()
         .map(|(id, path)| {
@@ -226,6 +254,14 @@ pub fn configured_inventory_with_progress(
         let mut job_remaining = (remaining / (job_count - job_index)).min(budget.entries);
         let job_initial = job_remaining;
         let mut roots = Vec::new();
+        if job.id == "pip" && pip.as_ref().is_some_and(|p| p.path.is_none()) {
+            let mut r = row("pip", home.join("Library/Caches/pip"));
+            r.status = Status::Blocked;
+            let p = pip.as_ref().unwrap();
+            r.note = format!("pip {}: {}", p.status, p.detail);
+            reports.push(r);
+            continue;
+        }
         if let Some(note) = job.unsupported {
             let mut r = row(&job.id, home.to_path_buf());
             r.status = if note.starts_with("Provider discovery") {
@@ -287,7 +323,14 @@ pub fn configured_inventory_with_progress(
                     cancel,
                     deadline,
                 ),
-                _ => roots.push(row(&job.id, root.clone())),
+                _ => {
+                    let mut r = row(&job.id, root.clone());
+                    if job.id == "pip" {
+                        let p = pip.as_ref().unwrap();
+                        r.note = format!("pip {}: {}", p.status, p.detail);
+                    }
+                    roots.push(r);
+                }
             }
         }
         if roots.is_empty() {

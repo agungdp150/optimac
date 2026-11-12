@@ -161,9 +161,11 @@ fn main() -> ExitCode {
             }
             let catalog = optimac::cleanup::catalog();
             if tail.len() == 2 {
+                let pip = std::env::var_os("HOME")
+                    .map(|home| optimac::cleanup::pip::resolve(Path::new(&home), &cancel));
                 println!(
                     "{}",
-                    serde_json::json!({"schema_version": 1, "providers": catalog})
+                    serde_json::json!({"schema_version": 1, "providers": catalog, "pip": pip})
                 );
             } else {
                 for provider in catalog {

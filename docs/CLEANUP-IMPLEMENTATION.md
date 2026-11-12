@@ -105,3 +105,7 @@ The pip/Go command resolver is **not yet implemented**. Existing scans still use
 ### Pip resolver work in progress
 
 Added a test-only candidate permission-check prototype and a disposable fixture for symlink and writable-parent refusal. It is not connected to scans and does not run pip. Pip root command resolution, per-tool statuses and the remaining requested fixture cases are still unimplemented; the previous environment/default behavior remains in use. Go is unchanged.
+
+### Pip inventory resolver
+
+Default and enabled configured scans resolve pip from PIP_CACHE_DIR first, then a fixed candidate via `pip cache dir`, falling back to the macOS default when no candidate exists. Scan output includes the source/status; `clean providers --json` includes a pip result. Invalid/outside-home roots are blocked. Candidate permissions and symlinks are checked; this is not executable authentication or an operating-system network sandbox. Tests use fixture candidates; Go discovery and full trust enrollment remain pending. The lightweight checks cannot prove a probed executable does not access the network.

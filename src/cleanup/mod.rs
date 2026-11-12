@@ -12,8 +12,7 @@ use std::{
 mod access;
 mod accounting;
 pub mod config;
-#[cfg(test)]
-mod pip;
+pub mod pip;
 mod projects;
 mod providers;
 mod registry;

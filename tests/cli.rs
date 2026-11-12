@@ -95,11 +95,13 @@ fn cleanup_inventory_json_is_read_only_and_reports_unknown_roots() {
         .unwrap()
         .join(format!("optimac-cli-inventory-{}", std::process::id()));
     std::fs::create_dir_all(home.join("Library/Caches/fixture")).unwrap();
+    std::fs::create_dir_all(home.join("pip-fixture")).unwrap();
     let file = home.join("Library/Caches/fixture/data");
     std::fs::write(&file, b"unchanged").unwrap();
     let output = std::process::Command::new(env!("CARGO_BIN_EXE_optimac"))
         .args(["clean", "scan", "--json"])
         .env("HOME", &home)
+        .env("PIP_CACHE_DIR", home.join("pip-fixture"))
         .output()
         .unwrap();
     assert!(output.status.success(), "{:?}", output);

@@ -34,10 +34,13 @@ pub(super) fn preflight(
                     _ => "unknown",
                 }
                 .into();
+                let previous_note = report.note.clone();
                 report.note = if report.status == Status::Denied {
                     GUIDANCE.into()
-                } else {
+                } else if previous_note.is_empty() {
                     error.to_string()
+                } else {
+                    format!("{previous_note}; {error}")
                 };
             }
         }

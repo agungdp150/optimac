@@ -439,8 +439,19 @@ fn glob(pattern: &str, name: &str) -> bool {
     i == p.len()
 }
 impl Config {
-    pub(super) fn jobs(&self, home: &Path) -> io::Result<Vec<Job>> {
-        self.jobs_with_env(home, |key| std::env::var_os(key))
+    pub(super) fn jobs(
+        &self,
+        home: &Path,
+        pip: Option<&super::pip::Resolution>,
+    ) -> io::Result<Vec<Job>> {
+        self.jobs_with_env(home, |key| {
+            if key == "PIP_CACHE_DIR" {
+                pip.and_then(|p| p.path.as_ref().map(|v| v.as_os_str().to_owned()))
+                    .or_else(|| std::env::var_os(key))
+            } else {
+                std::env::var_os(key)
+            }
+        })
     }
     pub(super) fn jobs_with_env(
         &self,
