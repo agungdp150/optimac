@@ -2,6 +2,28 @@
 compile_error!("CLI integration tests require --features fixture-only");
 
 use std::process::Command;
+// Each migrated test owns a private root and explicitly opens its fixture capability.
+fn authorized_home() -> (std::path::PathBuf, optimac::fixture_paths::FixtureRoot) {
+    use std::os::unix::fs::DirBuilderExt;
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static NEXT: AtomicU64 = AtomicU64::new(0);
+    let root = std::env::temp_dir().canonicalize().unwrap().join(format!(
+        "optimac-cli-authorized-{}-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos(),
+        NEXT.fetch_add(1, Ordering::Relaxed)
+    ));
+    std::fs::DirBuilder::new()
+        .mode(0o700)
+        .create(&root)
+        .unwrap();
+    let capability = optimac::fixture_paths::FixtureRoot::open(&root).unwrap();
+    (root, capability)
+}
+
 fn is_fixture_cli(executable: &std::path::Path) -> bool {
     Command::new(executable)
         .arg("--fixture-only-test-probe")
@@ -22,12 +44,14 @@ fn fixture_cli() -> Command {
 
 #[test]
 fn fixture_cli_rejects_missing_executable() {
-    let fixture = std::env::temp_dir().join(format!("optimac-missing-cli-{}", std::process::id()));
+    let (home, _authorization) = authorized_home();
+    let fixture = home.join("missing-cli");
     assert!(!is_fixture_cli(&fixture));
     // An executable that cannot answer the fixture probe is refused too.
     std::fs::write(&fixture, b"not an executable").unwrap();
     assert!(!is_fixture_cli(&fixture));
     std::fs::remove_file(fixture).unwrap();
+    std::fs::remove_dir(home).unwrap();
 }
 
 #[test]
@@ -57,12 +81,16 @@ fn legacy_mutations_fail_explicitly() {
 
 #[test]
 fn analysis_and_duplicates_use_disposable_fixtures() {
-    let root = std::env::temp_dir().join(format!("optimac-cli-actions-{}", std::process::id()));
-    std::fs::create_dir(&root).unwrap();
+    let (root, _authorization) = authorized_home();
     std::fs::write(root.join("first"), b"same content").unwrap();
     std::fs::write(root.join("second"), b"same content").unwrap();
     for command in ["analyze", "duplicates", "artifacts"] {
-        let output = fixture_cli().arg(command).arg(&root).output().unwrap();
+        let output = fixture_cli()
+            .arg(command)
+            .arg(&root)
+            .env("HOME", &root)
+            .output()
+            .unwrap();
         assert!(
             output.status.success(),
             "{}",
@@ -83,11 +111,16 @@ fn analysis_and_duplicates_use_disposable_fixtures() {
 
 #[test]
 fn artifact_sizes_sum_scanned_files() {
-    let root = std::env::temp_dir().join(format!("optimac-size-fixture-{}", std::process::id()));
+    let (root, _authorization) = authorized_home();
     std::fs::create_dir_all(root.join("node_modules/nested")).unwrap();
     std::fs::write(root.join("node_modules/a"), vec![0; 1000]).unwrap();
     std::fs::write(root.join("node_modules/nested/b"), vec![0; 1500]).unwrap();
-    let output = fixture_cli().arg("artifacts").arg(&root).output().unwrap();
+    let output = fixture_cli()
+        .arg("artifacts")
+        .arg(&root)
+        .env("HOME", &root)
+        .output()
+        .unwrap();
     assert!(output.status.success());
     assert!(String::from_utf8_lossy(&output.stdout).contains("2.50 KB"));
     std::fs::remove_dir_all(root).unwrap();
@@ -104,10 +137,7 @@ fn retired_commands_explain_why() {
 
 #[test]
 fn cleanup_inventory_json_is_read_only_and_reports_unknown_roots() {
-    let home = std::env::temp_dir()
-        .canonicalize()
-        .unwrap()
-        .join(format!("optimac-cli-inventory-{}", std::process::id()));
+    let (home, _authorization) = authorized_home();
     std::fs::create_dir_all(home.join("Library/Caches/fixture")).unwrap();
     std::fs::create_dir_all(home.join("pip-fixture")).unwrap();
     let file = home.join("Library/Caches/fixture/data");
@@ -138,10 +168,7 @@ fn cleanup_inventory_json_is_read_only_and_reports_unknown_roots() {
 
 #[test]
 fn configured_inventory_applies_scopes_and_exclusions() {
-    let home = std::env::temp_dir()
-        .canonicalize()
-        .unwrap()
-        .join(format!("optimac-config-cli-{}", std::process::id()));
+    let (home, _authorization) = authorized_home();
     for dir in [
         "files/keep",
         "files/private",
@@ -224,11 +251,7 @@ fn invalid_class_is_usage_error_before_scanning() {
 
 #[test]
 fn fixture_paths_are_used_by_cli_history() {
-    let fixture = std::env::temp_dir()
-        .canonicalize()
-        .unwrap()
-        .join(format!("optimac-cli-home-paths-{}", std::process::id()));
-    std::fs::create_dir(&fixture).unwrap();
+    let (fixture, _authorization) = authorized_home();
     let paths = optimac::paths::AppPaths::from_home(Some(fixture.as_os_str().to_owned())).unwrap();
     let expected = optimac::recovery::history(paths.home()).unwrap();
     let output = fixture_cli()
@@ -249,15 +272,7 @@ fn fixture_paths_are_used_by_cli_history() {
 #[cfg(feature = "fixture-only")]
 #[test]
 fn fixture_recovery_cli_cannot_select_production_policy() {
-    let root = std::env::temp_dir().canonicalize().unwrap().join(format!(
-        "optimac-cli-auth-{}-{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_nanos()
-    ));
-    std::fs::create_dir(&root).unwrap();
+    let (root, _authorization) = authorized_home();
     let output = fixture_cli()
         .env("HOME", &root)
         .args(["recovery", "inspect", "123"])
@@ -274,10 +289,7 @@ fn fixture_recovery_cli_cannot_select_production_policy() {
 
 #[test]
 fn clean_plan_cli_respects_config_exclusions_and_keeps_files_unchanged() {
-    let home = std::env::temp_dir()
-        .canonicalize()
-        .unwrap()
-        .join(format!("optimac-clean-plan-{}", std::process::id()));
+    let (home, _authorization) = authorized_home();
     let keep = home.join("files/keep");
     let excluded = home.join("files/private");
     std::fs::create_dir_all(&keep).unwrap();
