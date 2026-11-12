@@ -294,3 +294,9 @@ The process-level Slice 0 safety-net deliverables B1–E are now validated on th
 ### Immutable planning Slice 1: authorization amendment
 
 Slice 0's OS sandbox gate is complete at 70a7f5b. The spec and adapter contract now explicitly authorize plan creation only for narrow cleanup v1. This does not implement immutable plans or enable apply/permanent deletion. Implementation will reuse inventory and preserve existing classifications; unknown-content browser rows remain ineligible under the explicit exclusion rule. Model/storage, exact-unit builder, CLI selection/show/list and their sandboxed validation remain pending.
+
+### Immutable planning: model and storage
+
+Added `cleanup::plan_store`: strict schema-v1 content/identity types, deterministic SHA-256 IDs and checksum verification, top-level target shape checks, and private app-data storage. Storage uses no-follow descriptor-relative opens, mode-0700 app directories, mode-0600 files, fsync and exclusive atomic publication. Existing plans are never overwritten. Load/list do not create directories; corrupt/future-schema/unsafe files fail closed. Creation refuses overlap with caller-supplied scan roots or recovery. Failed publication may leave a private `.tmp` file, which list ignores; no automatic deletion is introduced. The digest detects corruption, not a malicious same-user rewrite or authorization to apply.
+
+Validation: `make test` passed 87 tests, 4 ignored (91 listed), including 2 new model/storage tests; `make test-recovery-isolated` passed all 4; `make security` and `make release-check` passed. Sandbox canaries passed and real recovery metadata remained unchanged. This library is not yet connected to CLI planning. Exact-unit collection, provider selection, exclusions, CLI show/list and requested end-to-end fixtures remain pending. Apply/permanent cleanup remain blocked.

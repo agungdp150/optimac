@@ -213,6 +213,16 @@
       "review": "passed_under_os_sandbox"
     },
     {
+      "name": "optimac:lib/cleanup::plan_store::tests::immutable_plan_rejects_root_units_and_tampering",
+      "class": "fixture_fs",
+      "review": "passed_under_os_sandbox"
+    },
+    {
+      "name": "optimac:lib/cleanup::plan_store::tests::immutable_plan_storage_roundtrip_hash_schema_permissions_and_no_overwrite",
+      "class": "fixture_fs",
+      "review": "passed_under_os_sandbox"
+    },
+    {
       "name": "optimac:lib/cleanup::scan::mount_tests::device_boundary_comparison_does_not_authorize_crossing",
       "class": "pure",
       "review": "classified"
