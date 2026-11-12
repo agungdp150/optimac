@@ -113,7 +113,7 @@ pub const PROVIDERS: &[(&str, usize)] = &[
     ("docker-desktop-storage", 5),
     ("ios-simulator-devices", 4),
 ];
-fn category(row: &ProviderReport) -> usize {
+pub(crate) fn category(row: &ProviderReport) -> usize {
     let mut parts = row.provider.split('/');
     let id = parts.next().unwrap_or("");
     if matches!(

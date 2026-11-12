@@ -15,6 +15,7 @@ pub mod category;
 pub mod config;
 pub mod go;
 pub mod pip;
+pub mod plan;
 mod projects;
 mod providers;
 mod registry;

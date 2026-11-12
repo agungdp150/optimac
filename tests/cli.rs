@@ -271,3 +271,67 @@ fn fixture_recovery_cli_cannot_select_production_policy() {
     assert_eq!(std::fs::read_dir(&root).unwrap().count(), 0);
     std::fs::remove_dir(root).unwrap();
 }
+
+#[test]
+fn clean_plan_cli_respects_config_exclusions_and_keeps_files_unchanged() {
+    let home = std::env::temp_dir()
+        .canonicalize()
+        .unwrap()
+        .join(format!("optimac-clean-plan-{}", std::process::id()));
+    let keep = home.join("files/keep");
+    let excluded = home.join("files/private");
+    std::fs::create_dir_all(&keep).unwrap();
+    std::fs::create_dir_all(&excluded).unwrap();
+    std::fs::write(keep.join("item"), b"keep").unwrap();
+    std::fs::write(excluded.join("secret"), b"unchanged").unwrap();
+    let config = home.join("rules.toml");
+    std::fs::write(&config, "schema_version = 2\n[scope]\nfile_roots = ['~/files']\nexclude_paths = ['~/files/private']\n[[rule]]\nid = 'large-old-files'\nenabled = true\nscope = 'files'\n").unwrap();
+    let output = fixture_cli()
+        .args(["clean", "plan", "--json", "--config"])
+        .arg(&config)
+        .env("HOME", &home)
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let json: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(json["read_only"], true);
+    assert_eq!(json["actionable_allocated_bytes"], 0);
+    assert!(
+        json["entries"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|e| e["provider"] == "large-old-files")
+    );
+    let text = fixture_cli()
+        .args(["clean", "plan", "--config"])
+        .arg(&config)
+        .env("HOME", &home)
+        .output()
+        .unwrap();
+    assert!(text.status.success());
+    let text = String::from_utf8(text.stdout).unwrap();
+    assert!(text.contains("Read-only cleanup proposal"));
+    assert!(text.contains("not guaranteed disk space freed"));
+    assert!(text.contains("large-old-files"));
+    let entry = json["entries"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|e| e["provider"] == "large-old-files")
+        .unwrap();
+    assert_eq!(
+        entry["logical_bytes"], 4,
+        "excluded files must not contribute"
+    );
+    assert_eq!(std::fs::read(keep.join("item")).unwrap(), b"keep");
+    assert_eq!(
+        std::fs::read(excluded.join("secret")).unwrap(),
+        b"unchanged"
+    );
+    std::fs::remove_dir_all(home).unwrap();
+}

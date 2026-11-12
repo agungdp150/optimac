@@ -194,7 +194,8 @@ fn main() -> ExitCode {
         }
         let mut config_path = None;
         let mut class_filter = "all";
-        let mut valid = tail.is_empty() || tail[0] == "scan" || tail[0] == "retry";
+        let mut valid =
+            tail.is_empty() || tail[0] == "scan" || tail[0] == "retry" || tail[0] == "plan";
         let mut i = 1;
         while i < tail.len() {
             if tail[i] == "--config" && config_path.is_none() && i + 1 < tail.len() {
@@ -222,6 +223,16 @@ fn main() -> ExitCode {
                 valid = false;
                 break;
             }
+        }
+        if tail.first().is_some_and(|a| a == "plan")
+            && tail.iter().any(|a| {
+                matches!(
+                    a.to_str(),
+                    Some("--all" | "--verbose" | "--by-category" | "--class")
+                )
+            })
+        {
+            valid = false;
         }
         if !valid {
             eprintln!(
@@ -272,7 +283,14 @@ fn main() -> ExitCode {
         }
         return match result {
             Ok(report) => {
-                if tail.iter().any(|a| a == "--json") {
+                if tail.first().is_some_and(|a| a == "plan") {
+                    let plan = optimac::cleanup::plan::from_inventory(&report);
+                    if tail.iter().any(|a| a == "--json") {
+                        println!("{}", serde_json::to_string_pretty(&plan).unwrap());
+                    } else {
+                        print!("{}", plan.render());
+                    }
+                } else if tail.iter().any(|a| a == "--json") {
                     let mut json = serde_json::to_value(&report).expect("serializable report");
                     json["summary"] = report.summary();
                     json["grouped_totals"] = serde_json::to_value(report.grouped_totals()).unwrap();
