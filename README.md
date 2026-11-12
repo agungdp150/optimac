@@ -293,3 +293,24 @@ scan and progress deadlines.
 
 Run `cargo run --release --locked --example inventory_benchmark` to benchmark
 4,000 disposable fixture files without scanning real caches.
+
+### Persistent project inventory scope
+
+Save the following as `project-inventory.toml` and replace `~/Projects` with a
+project directory you want to inventory:
+
+```toml
+schema_version = 2
+
+[scope]
+project_roots = ["~/Projects"]
+
+[[rule]]
+id = "project-artifacts"
+enabled = true
+scope = "projects"
+```
+
+Check and use it with `optimac config check project-inventory.toml` and
+`optimac clean scan --config project-inventory.toml --by-category`. Results are
+metadata inventory only and do not certify any artifact for removal.

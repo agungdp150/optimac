@@ -584,3 +584,23 @@ mod tests {
         }
     }
 }
+
+#[cfg(test)]
+mod readme_tests {
+    #[test]
+    fn documented_project_scope_example_parses() {
+        let readme = include_str!("../../README.md");
+        let section = readme
+            .split("### Persistent project inventory scope")
+            .nth(1)
+            .unwrap();
+        let example = section
+            .split("```toml\n")
+            .nth(1)
+            .unwrap()
+            .split("\n```")
+            .next()
+            .unwrap();
+        super::Config::parse(example).unwrap();
+    }
+}

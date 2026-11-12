@@ -151,3 +151,7 @@ A default scan now emits a size-unknown Skipped row for an existing `~/OrbStack`
 ### Filesystem type guard (partial)
 
 On macOS, inventory path validation now checks `statfs` for each existing directory component and refuses types outside the `apfs`/`hfs` allowlist. Tests cover the allowlist, including the specified FUSE/network names. This also refuses configured roots on those types. Non-macOS builds currently have no equivalent check. This is not the complete mount-safety deliverable: different-device roots on APFS/HFS, same-device mounts and APFS firmlinks are not comprehensively detected; descendants are skipped without separate rows; and injected full-traversal fixtures and accounting assertions are still missing. Do not claim all mounts are excluded. Existing inventory path checks are path-based and may race filesystem changes. No executable or deletion policy was changed.
+
+### Scoped project output follow-up
+
+Added a README example for the already-supported persistent project scope and a test that extracts and validates the actual example with the configuration parser. The requested `--project-root` flag and the new project artifact reporting remain unimplemented. iOS Podfile/Xcode discovery and exclusion of tracked source remain pending; existing metadata inventory does not prove a discovered output is untracked. No project mutation behavior changed. The mount-detection gaps in the filesystem-type guard section above remain unresolved.
