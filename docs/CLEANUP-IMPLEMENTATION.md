@@ -129,3 +129,7 @@ Deliverable 2 progress: refused pip/Go candidates now remain unexecuted while th
 - Added a not-covered section and home-used-minus-measured-allocated estimate; the estimate is not reclaimed storage and may be distorted by shared extents, other-volume configured roots, concurrent changes and APFS accounting. Missing capacity or a negative result is unavailable.
 - Added full inventory fixtures using refused fake pip/Go candidates and measured default roots. These use assertions on report text rather than a snapshot framework.
 - Validation: make test, make security and make release-check passed for each of deliverables 3–5. One earlier deliverable 4 test run hit a recovery-operation lock contention; a fresh full run passed.
+
+### Cache versus user-data reporting
+
+D1 implemented: class/risk-grouped allocated totals in the text summary and `grouped_totals` in scan JSON, with per-group lower-bound flags. Unknown or unattributed generic caches remain in the unknown group; review-risk caches and user state are separate from conditional caches. D2 class filtering, D3 category view, D4 available-space samples and D5 recovery-test isolation remain unimplemented. No cleanup or scanning policy changed.

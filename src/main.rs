@@ -248,6 +248,7 @@ fn main() -> ExitCode {
                 if tail.iter().any(|a| a == "--json") {
                     let mut json = serde_json::to_value(&report).expect("serializable report");
                     json["summary"] = report.summary();
+                    json["grouped_totals"] = serde_json::to_value(report.grouped_totals()).unwrap();
                     println!("{}", serde_json::to_string_pretty(&json).unwrap());
                 } else {
                     println!(

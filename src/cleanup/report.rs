@@ -79,7 +79,53 @@ impl Budget {
         }
     }
 }
+#[derive(Default, serde::Serialize)]
+pub struct GroupTotal {
+    pub allocated_bytes: u64,
+    pub lower_bound: bool,
+    pub providers: usize,
+}
+
 impl Inventory {
+    fn group_index(&self, row: &ProviderReport) -> usize {
+        let id = row.provider.split('/').next().unwrap_or("");
+        let capability = self
+            .capabilities
+            .iter()
+            .find(|c| c.provider == id || super::registry::alias(&c.provider) == id);
+        match capability.map(|c| (c.class.as_str(), c.risk.as_str())) {
+            Some(("generated_output", _)) => 1,
+            Some(("rebuildable_cache", "conditional_cache")) => 0,
+            Some(("user_state" | "holding_area" | "logs", _))
+            | Some(("rebuildable_cache", "review")) => 2,
+            _ if matches!(
+                id,
+                "docker-desktop-storage"
+                    | "ios-simulator-devices"
+                    | "orbstack-storage"
+                    | "application-support"
+                    | "user-logs"
+                    | "crash-reports"
+            ) =>
+            {
+                2
+            }
+            _ => 3,
+        }
+    }
+    pub fn grouped_totals(&self) -> [GroupTotal; 4] {
+        let mut groups: [GroupTotal; 4] = Default::default();
+        for row in &self.providers {
+            let g = &mut groups[self.group_index(row)];
+            g.providers += 1;
+            g.allocated_bytes = g
+                .allocated_bytes
+                .saturating_add(row.allocated_bytes.unwrap_or(0));
+            g.lower_bound |= !matches!(row.status, Status::Complete | Status::Absent);
+        }
+        groups
+    }
+
     pub fn summary(&self) -> serde_json::Value {
         let sum = |f: fn(&ProviderReport) -> Option<u64>| {
             self.providers
@@ -103,7 +149,7 @@ impl Inventory {
             ""
         };
         let mut text = format!(
-            "Summary\nMeasured logical: {}{}; allocated: {}{}\nComplete: {}; partial: {}; denied: {}; blocked: {}; absent: {}\nHome volume available: {}\nOptions: --deep, --all, --verbose; retry: clean retry\n",
+            "Summary\nMeasured (all classes, not reclaimable) logical: {}{}; allocated: {}{}\nComplete: {}; partial: {}; denied: {}; blocked: {}; absent: {}\nHome volume available: {}\nOptions: --deep, --all, --verbose; retry: clean retry\n",
             crate::format_size(summary["logical_bytes"].as_u64().unwrap()),
             lower,
             crate::format_size(summary["allocated_bytes"].as_u64().unwrap()),
@@ -117,6 +163,30 @@ impl Inventory {
                 .map(crate::format_size)
                 .unwrap_or_else(|| "unknown".into())
         );
+        let groups = self.grouped_totals();
+        let mut group_lines = String::new();
+        for (index, label) in [
+            "Rebuildable cache",
+            "Generated project output",
+            "Review (user state, backups, simulators, app data)",
+            "Unknown / not classified",
+        ]
+        .iter()
+        .enumerate()
+        {
+            let g = &groups[index];
+            if index == 1 && g.providers == 0 {
+                continue;
+            }
+            group_lines.push_str(&format!(
+                "{}: {}{}\n",
+                label,
+                crate::format_size(g.allocated_bytes),
+                if g.lower_bound { " (lower bound)" } else { "" }
+            ));
+        }
+        let insert_at = text.find("Complete:").unwrap();
+        text.insert_str(insert_at, &group_lines);
         let estimate = self
             .home_used_bytes
             .and_then(|used| used.checked_sub(summary["allocated_bytes"].as_u64().unwrap()));

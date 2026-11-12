@@ -484,7 +484,7 @@ fn summary_sorts_and_marks_incomplete_totals() {
         capabilities: vec![],
     };
     let compact = report.render_options(false, false);
-    assert!(compact.starts_with("Summary\nMeasured logical:"));
+    assert!(compact.starts_with("Summary\nMeasured (all classes, not reclaimable) logical:"));
     assert!(compact.contains("(lower bound)"));
     assert!(compact.find("item-19").unwrap() < compact.find("item-18").unwrap());
     assert!(!compact.contains("item-00"));
@@ -592,4 +592,53 @@ fn full_scan_refused_probes_still_measure_default_roots() {
         assert!(rendered.contains("tool not run: candidate refused"));
     }
     fs::remove_dir_all(home).unwrap();
+}
+
+#[test]
+fn class_groups_keep_review_separate_and_mark_incomplete() {
+    let make = |id: &str, size, status| ProviderReport {
+        provider: id.into(),
+        root: PathBuf::from("/fixture"),
+        access: "readable".into(),
+        status,
+        logical_bytes: Some(size),
+        allocated_bytes: Some(size),
+        files: 1,
+        skipped: 0,
+        errors: 0,
+        note: String::new(),
+    };
+    let report = Inventory {
+        schema_version: 1,
+        read_only: true,
+        providers: vec![
+            make("pip-cache", 10, Status::Complete),
+            make("project-artifacts", 20, Status::Partial),
+            make("application-support/example", 30, Status::Complete),
+            make("app-user-caches/example", 40, Status::Complete),
+            make("local-trash", 0, Status::Denied),
+        ],
+        available_bytes: None,
+        home_used_bytes: None,
+        complete: false,
+        notes: vec![],
+        capabilities: catalog(),
+    };
+    let g = report.grouped_totals();
+    assert_eq!(
+        [
+            g[0].allocated_bytes,
+            g[1].allocated_bytes,
+            g[2].allocated_bytes,
+            g[3].allocated_bytes
+        ],
+        [10, 20, 30, 40]
+    );
+    assert!(g[1].lower_bound && g[2].lower_bound);
+    let text = report.render_options(false, false);
+    assert!(text.contains("Measured (all classes, not reclaimable)"));
+    assert!(text.contains("Generated project output: 20 B (lower bound)"));
+    assert!(
+        text.contains("Review (user state, backups, simulators, app data): 30 B (lower bound)")
+    );
 }
