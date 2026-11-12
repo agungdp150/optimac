@@ -566,6 +566,11 @@
       "name": "optimac:lib/recovery::unit::tests::recovery_record_versions_load_v1_and_unit_records_fail_closed",
       "class": "fixture_fs",
       "review": "passed_under_os_sandbox"
+    },
+    {
+      "name": "optimac:lib/recovery::unit_purge::tests::purge_review_accepts_only_moved_directory_unit_records",
+      "class": "fixture_fs",
+      "review": "passed_under_os_sandbox"
     }
   ]
 }

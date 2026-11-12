@@ -158,14 +158,14 @@ pub(crate) struct Faults {
     pub stop_after_move: bool,
 }
 
-fn valid_id(id: &str) -> io::Result<()> {
+pub(super) fn valid_id(id: &str) -> io::Result<()> {
     if id.is_empty() || !id.chars().all(|c| c.is_ascii_digit() || c == '-') {
         return Err(error("Invalid recovery ID"));
     }
     Ok(())
 }
 
-fn identity_matches(st: &libc::stat, record: &UnitRecord) -> bool {
+pub(super) fn identity_matches(st: &libc::stat, record: &UnitRecord) -> bool {
     st.st_mode & libc::S_IFMT == libc::S_IFDIR
         && st.st_dev as u64 == record.device
         && st.st_ino == record.inode
@@ -173,7 +173,7 @@ fn identity_matches(st: &libc::stat, record: &UnitRecord) -> bool {
         && st.st_uid == unsafe { libc::geteuid() }
 }
 
-fn present(directory: &File, name: &CStr) -> io::Result<Option<libc::stat>> {
+pub(super) fn present(directory: &File, name: &CStr) -> io::Result<Option<libc::stat>> {
     match stat_at(directory, name) {
         Ok(st) => Ok(Some(st)),
         Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(None),
@@ -232,7 +232,7 @@ impl RecoveryContext {
         Ok(())
     }
 
-    fn open_record_dir(&self, id: &str) -> io::Result<File> {
+    pub(super) fn open_record_dir(&self, id: &str) -> io::Result<File> {
         valid_id(id)?;
         let directory =
             super::context::open_child(&self.directory, id, libc::O_RDONLY | libc::O_DIRECTORY)?;
@@ -382,13 +382,13 @@ impl RecoveryContext {
     }
 }
 
-/// Shared by the fixture inspector and the existing `recovery inspect` path.
-pub(super) fn describe(directory: &File, id: &str, record: &UnitRecord) -> io::Result<String> {
+/// Lifecycle state derived from markers and payload identity; read-only.
+pub(super) fn state_of(directory: &File, record: &UnitRecord) -> io::Result<&'static str> {
     let payload = present(directory, c"payload")?;
     let moved = present(directory, c"move-completed")?.is_some();
     let intent = present(directory, c"restore-intent")?.is_some();
     let restored = present(directory, c"restore-completed")?.is_some();
-    let state = match (&payload, moved, intent, restored) {
+    Ok(match (&payload, moved, intent, restored) {
         (Some(st), ..) if !identity_matches(st, record) => {
             "needs_reconciliation: payload identity differs from the record; nothing replayed"
         }
@@ -407,7 +407,13 @@ pub(super) fn describe(directory: &File, id: &str, record: &UnitRecord) -> io::R
             "needs_reconciliation: payload absent after restore intent without completion; cause not inferred"
         }
         _ => "needs_reconciliation: inconsistent markers; cause not inferred",
-    };
+    })
+}
+
+/// Shared by the fixture inspector and the existing `recovery inspect` path.
+pub(super) fn describe(directory: &File, id: &str, record: &UnitRecord) -> io::Result<String> {
+    let payload = present(directory, c"payload")?;
+    let state = state_of(directory, record)?;
     let original = match fs::symlink_metadata(&record.original_path) {
         Err(e) if e.kind() == io::ErrorKind::NotFound => "absent".to_string(),
         Err(e) => format!("unreadable ({e})"),

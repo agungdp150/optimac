@@ -3,6 +3,7 @@ mod context;
 mod fs_ops;
 pub mod purge;
 pub mod unit;
+pub mod unit_purge;
 pub use context::{RecoveryContext, RecoveryPolicy};
 use fs_ops::{move_exclusive, operation_lock, sync_dir};
 // Conservative, journaled, same-volume cache cleanup. Never permanently deletes.
