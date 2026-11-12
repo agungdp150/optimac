@@ -504,38 +504,62 @@ pub fn run_with_paths(
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn fake_diagnostic() -> (PathBuf, crate::fixture_paths::FixtureRoot, PathBuf) {
+        use std::os::unix::fs::PermissionsExt;
+        let (root, authority) = crate::fixture_paths::FixtureRoot::create_test_fixture().unwrap();
+        let executable = root.join("fake-diagnostic");
+        fs::write(&executable, b"#!/bin/sh\n[ -z \"$HOME$TMPDIR$XDG_CONFIG_HOME\" ] || exit 91\ncase \"$1\" in\nfail) exit 1;;\nsleep) while :; do :; done;;\n*) printf '%s' \"$1\";;\nesac\n").unwrap();
+        fs::set_permissions(&executable, fs::Permissions::from_mode(0o700)).unwrap();
+        (root, authority, executable)
+    }
     #[test]
     fn diagnostics_use_readable_headings_and_report_failures() {
+        let (root, _authority, executable) = fake_diagnostic();
+        let missing = root.join("missing");
         let cancel = AtomicBool::new(false);
         let result = commands(
             &[
-                ("/usr/bin/printf", &["example\n"]),
-                ("/not-a-real-optimac-command", &[]),
+                (executable.to_str().unwrap(), &["example\n"]),
+                (missing.to_str().unwrap(), &[]),
             ],
             &cancel,
         );
         assert!(result.contains("Details\n  example"));
         assert!(result.contains("Unavailable:"));
+        assert!(
+            command("fake-diagnostic", &["example"], &cancel)
+                .unwrap_err()
+                .to_string()
+                .contains("Absolute executable")
+        );
+        fs::remove_dir_all(root).unwrap();
     }
     #[test]
     fn subprocess_cancellation_and_failure_are_reported() {
+        let (root, _authority, executable) = fake_diagnostic();
+        let program = executable.to_str().unwrap();
         let cancel = AtomicBool::new(true);
-        assert!(command("/bin/sleep", &["10"], &cancel).is_err());
+        assert!(command(program, &["sleep"], &cancel).is_err());
         cancel.store(false, Ordering::Relaxed);
-        assert!(command("/usr/bin/false", &[], &cancel).is_err());
-        assert_eq!(
-            command("/usr/bin/printf", &["hello"], &cancel).unwrap(),
-            "hello"
-        );
+        assert!(command(program, &["fail"], &cancel).is_err());
+        assert_eq!(command(program, &["hello"], &cancel).unwrap(), "hello");
         std::thread::scope(|scope| {
             scope.spawn(|| {
                 std::thread::sleep(Duration::from_millis(100));
                 cancel.store(true, Ordering::Relaxed);
             });
             let start = Instant::now();
-            assert!(command("/bin/sleep", &["10"], &cancel).is_err());
+            assert!(command(program, &["sleep"], &cancel).is_err());
             assert!(start.elapsed() < Duration::from_secs(3));
         });
+        cancel.store(false, Ordering::Relaxed);
+        assert!(
+            command("fake-diagnostic", &["hello"], &cancel)
+                .unwrap_err()
+                .to_string()
+                .contains("Absolute executable")
+        );
+        fs::remove_dir_all(root).unwrap();
     }
     #[test]
     fn byte_comparison_is_exact_and_cancellable() {

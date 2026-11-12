@@ -164,13 +164,13 @@
     },
     {
       "name": "optimac:lib/actions::tests::diagnostics_use_readable_headings_and_report_failures",
-      "class": "fixture_fs",
-      "review": "passed_under_os_sandbox"
+      "class": "subprocess_audited",
+      "review": "absolute fixture script, cleared child environment, relative executable refused"
     },
     {
       "name": "optimac:lib/actions::tests::subprocess_cancellation_and_failure_are_reported",
-      "class": "fixture_fs",
-      "review": "passed_under_os_sandbox"
+      "class": "subprocess_audited",
+      "review": "absolute fixture script, cleared child environment, relative executable refused"
     },
     {
       "name": "optimac:lib/cleanup::category::tests::browser_specific_mapping_partial_and_denied_trash",
