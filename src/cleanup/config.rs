@@ -515,6 +515,8 @@ impl Config {
                             },
                         )
                         .or_else(|| match id {
+                            "application-support" => Some(home.join("Library/Application Support")),
+                            "user-logs" => Some(home.join("Library/Logs")),
                             "app-user-caches" => Some(home.join("Library/Caches")),
                             "sandbox-app-caches" => Some(home.join("Library/Containers")),
                             "group-container-caches" => Some(home.join("Library/Group Containers")),

@@ -59,18 +59,31 @@ fn children(
                     out.push(r);
                     continue;
                 };
-                if name.starts_with("com.apple.") || name.starts_with("group.com.apple.") {
+                if name.starts_with("com.apple.")
+                    || name.starts_with("group.com.apple.")
+                    || protected_component(name)
+                {
+                    continue;
+                }
+                if suffixes == [""] && !e.file_type().is_ok_and(|t| t.is_dir()) {
                     continue;
                 }
                 for suffix in suffixes {
-                    out.push(row(
+                    let mut item = row(
                         &format!("{id}/{name}"),
                         if suffix.is_empty() {
                             e.path()
                         } else {
                             e.path().join(suffix)
                         },
-                    ));
+                    );
+                    if id == "application-support" {
+                        item.note = "User state / review; inventory only".into();
+                    }
+                    if id == "user-logs" {
+                        item.note = "User logs / review; inventory only".into();
+                    }
+                    out.push(item);
                 }
             }
             Err(e) => {
@@ -143,7 +156,13 @@ pub fn inventory_with_progress(
             continue;
         }
         match super::registry::resolve(home, id, relative, |key| std::env::var_os(key)) {
-            Ok(root) => roots.push(row(id, root)),
+            Ok(root) => {
+                let mut r = row(id, root);
+                if matches!(id, "orbstack-storage" | "docker-desktop-storage") {
+                    r.note = "Filesystem estimate; user state / review; no daemon contacted; not reclaimable bytes".into();
+                }
+                roots.push(r);
+            }
             Err(e) => {
                 let mut r = row(id, home.join(relative));
                 r.status = Status::Blocked;
@@ -176,6 +195,22 @@ pub fn inventory_with_progress(
         cancel,
         deadline,
     );
+    children(
+        "application-support",
+        home.join("Library/Application Support"),
+        &[""],
+        &mut roots,
+        cancel,
+        deadline,
+    );
+    children(
+        "user-logs",
+        home.join("Library/Logs"),
+        &[""],
+        &mut roots,
+        cancel,
+        deadline,
+    );
     let specific: Vec<_> = roots
         .iter()
         .filter(|r| !r.provider.contains('/'))
@@ -204,7 +239,7 @@ pub fn inventory_with_progress(
                 deadline,
                 &mut seen,
                 &mut remaining,
-                &|path| generic_claims.iter().any(|p| path.starts_with(p)),
+                &|path| generic_claims.iter().any(|p| path.starts_with(p)) || protected_path(path),
                 progress,
             ));
         }
@@ -359,6 +394,9 @@ pub fn configured_inventory_with_progress(
                         roots.push(report);
                     }
                 }
+                "application-support" | "user-logs" => {
+                    children(&job.id, root.clone(), &[""], &mut roots, cancel, deadline)
+                }
                 "app-user-caches" => {
                     children(&job.id, root.clone(), &[""], &mut roots, cancel, deadline)
                 }
@@ -391,6 +429,9 @@ pub fn configured_inventory_with_progress(
                                 " (rebuildable cache)"
                             }
                         );
+                    }
+                    if job.id == "orbstack-storage" {
+                        r.note = "Filesystem estimate; user state / review; no daemon contacted; not reclaimable bytes".into();
                     }
                     if job.id == "pip" {
                         let p = pip.as_ref().unwrap();
@@ -431,6 +472,7 @@ pub fn configured_inventory_with_progress(
                     &mut job_remaining,
                     &|p| {
                         job.excluded(p)
+                            || protected_path(p)
                             || (is_generic(&job.id) && claims.iter().any(|c| p.starts_with(c)))
                     },
                     progress,
@@ -459,4 +501,25 @@ fn is_generic(id: &str) -> bool {
         id.split('/').next().unwrap_or(id),
         "app-user-caches" | "sandbox-app-caches" | "group-container-caches"
     )
+}
+
+fn protected_component(name: &str) -> bool {
+    matches!(
+        name,
+        "Mail"
+            | "Messages"
+            | "Notes"
+            | "Keychains"
+            | "CloudStorage"
+            | "Mobile Documents"
+            | ".ssh"
+            | ".aws"
+            | ".gnupg"
+            | ".git"
+    ) || name.starts_with(".env")
+        || name.ends_with(".photoslibrary")
+}
+fn protected_path(path: &Path) -> bool {
+    path.components()
+        .any(|c| c.as_os_str().to_str().is_none_or(protected_component))
 }

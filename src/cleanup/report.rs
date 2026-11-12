@@ -116,6 +116,9 @@ impl Inventory {
                 .map(crate::format_size)
                 .unwrap_or_else(|| "unknown".into())
         );
+        text.push_str(
+            "Downloads and Documents are not scanned unless explicitly scoped in configuration.\n",
+        );
         let mut rows: Vec<_> = self
             .providers
             .iter()

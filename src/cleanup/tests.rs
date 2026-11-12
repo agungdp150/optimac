@@ -491,3 +491,50 @@ fn summary_sorts_and_marks_incomplete_totals() {
     assert!(report.render_options(true, true).contains("fixture safety"));
     assert_eq!(report.summary()["allocated_bytes"], 190);
 }
+
+#[test]
+fn application_support_logs_and_orbstack_are_review_only() {
+    let home = std::env::temp_dir()
+        .canonicalize()
+        .unwrap()
+        .join(format!("optimac-extra-{}", std::process::id()));
+    for path in [
+        "Library/Application Support/Example",
+        "Library/Application Support/com.apple.private",
+        "Library/Application Support/Mail",
+        "Library/Logs/Example",
+        ".orbstack",
+    ] {
+        fs::create_dir_all(home.join(path)).unwrap();
+        fs::write(home.join(path).join("fixture"), b"example").unwrap();
+    }
+    let r = inventory(&home, &AtomicBool::new(false), Budget::deep()).unwrap();
+    for name in [
+        "application-support/Example",
+        "user-logs/Example",
+        "orbstack-storage",
+    ] {
+        let p = r.providers.iter().find(|p| p.provider == name).unwrap();
+        assert_eq!(p.logical_bytes, Some(7), "{name}");
+        assert!(p.note.contains("review"));
+    }
+    assert!(
+        !r.providers
+            .iter()
+            .any(|p| p.provider.contains("com.apple.private")
+                || p.provider == "application-support/Mail")
+    );
+    assert!(
+        r.render_options(true, false)
+            .contains("application-support/Example")
+    );
+    assert!(
+        r.render_options(false, false)
+            .contains("Downloads and Documents are not scanned")
+    );
+    assert!(
+        home.join("Library/Application Support/Mail/fixture")
+            .exists()
+    );
+    fs::remove_dir_all(home).unwrap();
+}

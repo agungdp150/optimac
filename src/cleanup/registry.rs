@@ -1,5 +1,6 @@
 //! Built-in default locations; these are inventory capabilities, not deletion rules.
 pub const ROOTS: &[(&str, &str)] = &[
+    ("orbstack-storage", ".orbstack"),
     ("pip-cache", "Library/Caches/pip"),
     ("go-build", "Library/Caches/go-build"),
     ("homebrew-cache", "Library/Caches/Homebrew"),

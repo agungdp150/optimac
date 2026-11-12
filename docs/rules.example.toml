@@ -1303,3 +1303,42 @@ exclude_name_patterns = []
 age_basis = "not_applicable"
 min_age_days = 0
 high_risk = false
+
+[[rule]]
+id = "application-support"
+provider = "application-support"
+risk = "review"
+enabled = false
+operation = "inventory"
+class = "user_state"
+scope = "provider"
+scan_roots = []
+exclude_paths = []
+exclude_name_patterns = []
+high_risk = false
+
+[[rule]]
+id = "user-logs"
+provider = "user-logs"
+risk = "review"
+enabled = false
+operation = "inventory"
+class = "logs"
+scope = "provider"
+scan_roots = []
+exclude_paths = []
+exclude_name_patterns = []
+high_risk = false
+
+[[rule]]
+id = "orbstack-storage"
+provider = "orbstack-storage"
+risk = "review"
+enabled = false
+operation = "inventory"
+class = "user_state"
+scope = "provider"
+scan_roots = []
+exclude_paths = []
+exclude_name_patterns = []
+high_risk = false
