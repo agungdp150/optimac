@@ -324,6 +324,17 @@ pub fn describe(plan: &Plan) -> String {
     }
     s
 }
+/// Initialize recovery for an explicitly authorized test fixture only.
+/// This does not authorize other recovery operations or the production CLI.
+pub fn initialize_fixture_recovery(
+    home: &Path,
+    authorization: Option<&crate::fixture_paths::FixtureRoot>,
+) -> io::Result<std::fs::File> {
+    authorization
+        .ok_or_else(|| error("fixture authorization required"))?
+        .initialize_recovery(home)
+}
+
 fn recovery_root(home: &Path) -> io::Result<PathBuf> {
     let p = crate::paths::AppPaths::from_home(Some(home.as_os_str().to_owned()))?.recovery();
     if !p.exists() {
