@@ -104,6 +104,7 @@ pub const PROVIDERS: &[(&str, usize)] = &[
     ("application-support", 3),
     ("user-logs", 6),
     ("orbstack-storage", 5),
+    ("orbstack-virtual-view", 5),
     ("pip-cache", 1),
     ("homebrew-cache", 1),
     ("poetry-cache", 1),

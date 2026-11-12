@@ -139,3 +139,11 @@ D1 implemented: class/risk-grouped allocated totals in the text summary and `gro
 D2 implemented: class labels appear in Top and --all rows; --class cache/review/all filters those rows while leaving totals unchanged. Cache and review follow the D1 class/risk groups; unknown and project-output rows remain available with --class all. Invalid values fail before scanning.
 
 D3 implemented: --by-category reports ten categories and optional JSON categories, using an explicit provider table checked against the shipped catalog and registry. Known Brave, Firefox and Zen generic-cache owner names route to browser caches; other generic entries remain generic. Unknown category sizes stay unknown and denied Trash reports unknown. Name-based browser attribution is a heuristic, not proof of cache content. D4 available-space samples and D5 recovery test isolation remain pending. No mutation policy changed.
+
+### Inventory gap work in progress
+
+D1 is **not complete**. Existing descendant traversal already refuses differing device IDs and symlinks; this follow-up isolates and tests the device comparison only. Root mount detection, virtual/network filesystem detection, same-device mount/firmlink handling, explicit skipped-provider rows and full traversal fixtures are still required before claiming virtual mounts are never entered. D2 scoped project flags, D3 home dot-directory inventory, D4 Library/container breakdown and D5 access diagnostics are also not implemented. No scan policy or deletion behavior changed in this follow-up.
+
+### Virtual mount follow-up
+
+A default scan now emits a size-unknown Skipped row for an existing `~/OrbStack` view without opening it, including when the final component is a symlink, and marks skipped filesystems in Not covered. A fixture checks this reporting and existing device comparison. This does **not** implement the requested general guarantee: filesystem type detection, root and ancestor mount checks, same-device mounts/firmlinks, per-descendant skipped rows, and rejection of explicitly configured scopes inside virtual locations remain unimplemented. Do not claim virtual or mounted filesystems are never walked. The evidence baseline is local-only and ignored. No deletion behavior changed.

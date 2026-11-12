@@ -128,6 +128,13 @@ pub(super) fn inventory_with_resolutions(
     validate(home)?;
     let deadline = Instant::now() + budget.total;
     let mut roots = Vec::new();
+    let virtual_root = home.join("OrbStack");
+    if fs::symlink_metadata(&virtual_root).is_ok() {
+        let mut item = row("orbstack-virtual-view", virtual_root);
+        item.status = Status::Skipped;
+        item.note = "virtual or mounted filesystem; size not measured by OptiMac; check OrbStack's own accounting (`docker system df`); not run by OptiMac".into();
+        roots.push(item);
+    }
     for &(id, relative) in super::registry::ROOTS {
         if id == "go-build" || id == "go-modules" {
             let g = if id == "go-build" {

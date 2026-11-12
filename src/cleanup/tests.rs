@@ -651,3 +651,28 @@ fn class_groups_keep_review_separate_and_mark_incomplete() {
         text.contains("Review (user state, backups, simulators, app data): 30 B (lower bound)")
     );
 }
+
+#[test]
+fn known_orbstack_virtual_view_is_skipped_without_following_symlink() {
+    let home = std::env::temp_dir()
+        .canonicalize()
+        .unwrap()
+        .join(format!("optimac-orbstack-skip-{}", std::process::id()));
+    fs::create_dir_all(home.join("outside")).unwrap();
+    fs::write(home.join("outside/fixture"), b"not inventoried").unwrap();
+    std::os::unix::fs::symlink(home.join("outside"), home.join("OrbStack")).unwrap();
+    let r = inventory(&home, &AtomicBool::new(false), Budget::quick()).unwrap();
+    let row = r
+        .providers
+        .iter()
+        .find(|r| r.provider == "orbstack-virtual-view")
+        .unwrap();
+    assert_eq!(row.status, Status::Skipped);
+    assert_eq!(row.allocated_bytes, None);
+    assert!(row.note.contains("not run by OptiMac"));
+    assert!(
+        r.render_options(true, false)
+            .contains("Virtual or mounted filesystems skipped")
+    );
+    fs::remove_dir_all(home).unwrap();
+}

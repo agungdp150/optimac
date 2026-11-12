@@ -159,7 +159,7 @@ pub(super) fn measure(
                 continue;
             }
         };
-        if m.dev() != device {
+        if crosses_device_boundary(device, m.dev()) {
             r.skipped += 1;
             continue;
         }
@@ -191,4 +191,20 @@ pub(super) fn measure(
     r.allocated_bytes = Some(allocated);
     progress(&r);
     r
+}
+
+/// Returns true when a traversal entry is on a different filesystem device.
+/// This alone does not identify same-device virtual mounts or firmlinks.
+pub(super) fn crosses_device_boundary(parent_device: u64, child_device: u64) -> bool {
+    parent_device != child_device
+}
+
+#[cfg(test)]
+mod mount_tests {
+    use super::*;
+    #[test]
+    fn device_boundary_comparison_does_not_authorize_crossing() {
+        assert!(crosses_device_boundary(17, 18));
+        assert!(!crosses_device_boundary(17, 17));
+    }
 }

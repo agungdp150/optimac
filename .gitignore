@@ -5,3 +5,4 @@ dist/
 rust/target/
 
 /target/
+/.local-evidence/
