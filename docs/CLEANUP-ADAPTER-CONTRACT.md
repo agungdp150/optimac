@@ -1,5 +1,13 @@
 # Cleanup adapter implementation contract
 
+## Slice 1 authorization amendment (2026-11-12)
+
+A narrow cleanup v1 is planned. This slice authorizes **plan creation only**: metadata inspection and immutable, versioned plan files in OptiMac's private app data directory. It authorizes no writes, moves, renames or deletion inside candidate roots. Apply to recovery and permanent deletion remain separate, unimplemented gates; existing experimental recovery commands are not extended.
+
+The planning allow-list is playwright-browsers, puppeteer-browsers, cypress-browsers, pnpm-store, the existing resolved npm cache directory, gradle-cache (caches only), cargo-registry cache, and Brave/Zen/Firefox/Chrome/Arc cache subtrees under app-user-caches. Membership is necessary, not sufficient: existing class/risk, root, mount, exclusion and completeness checks still apply. User state, unknown content, protected locations and every other provider remain excluded even when explicitly selected. A default-not-verified root requires explicit provider selection. No external tool command is added by this slice.
+
+Plans contain whole top-level content units, never provider roots. Symlinks, hard links, other owners, protected paths, mount/device crossings and files modified within 24 hours exclude a unit; incomplete scans contribute no targets. Estimates are not bytes freed. Stored plans do not authorize subsequent mutation.
+
 Status: proposed; no mutation adapter has been certified by this documentation work. This contract resolves the implementation questions in SOME-FEEDBACK.md and is normative alongside CLEANUP-TECH-SPEC.md. It does not claim that untested safety mechanisms exist.
 
 ## Registry versus user configuration
