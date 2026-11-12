@@ -183,6 +183,11 @@
       "review": "absolute fixture script, cleared child environment, relative executable refused"
     },
     {
+      "name": "optimac:lib/cleanup::activity::tests::activity_check_uses_libproc_in_process_and_reports_in_use_idle_unknown",
+      "class": "fixture_fs",
+      "review": "passed_under_os_sandbox"
+    },
+    {
       "name": "optimac:lib/cleanup::apply_validation::tests::apply_revalidation_allows_internal_links_but_refuses_unit_and_ancestor_links",
       "class": "fixture_fs",
       "review": "passed_under_os_sandbox"
