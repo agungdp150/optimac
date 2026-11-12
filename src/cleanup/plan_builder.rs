@@ -545,11 +545,7 @@ mod tests {
         assert!(p.targets.is_empty());
         assert!(p.excluded.iter().any(|e| e.reason.contains("Symlink")));
         assert!(p.excluded.iter().any(|e| e.reason.contains("hard-linked")));
-        assert!(
-            p.excluded
-                .iter()
-                .any(|e| e.reason.contains("incomplete scan"))
-        );
+        assert_eq!(p.completeness, "complete");
         let uid = unsafe { libc::geteuid() };
         assert!(
             refuse("file", 1, uid.wrapping_add(1), 1, 1, 0, 1_000_000)

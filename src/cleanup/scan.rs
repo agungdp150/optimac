@@ -291,12 +291,7 @@ pub(super) fn measure_observed(
             r.skipped += 1;
         }
     }
-    if r.status == Status::Complete
-        && (r.errors > 0
-            || r.skipped
-                > r.skip_reasons.get("protected_name").copied().unwrap_or(0)
-                    + r.skip_reasons.get("config_exclusion").copied().unwrap_or(0))
-    {
+    if r.status == Status::Complete && r.has_incomplete_reasons() {
         r.status = Status::Partial;
     }
     let reasons = r.reason_summary();

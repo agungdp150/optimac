@@ -303,6 +303,11 @@
       "review": "passed_under_os_sandbox"
     },
     {
+      "name": "optimac:lib/cleanup::tests::intentional_skips_complete_but_denial_and_budget_are_partial",
+      "class": "fixture_fs",
+      "review": "passed_under_os_sandbox"
+    },
+    {
       "name": "optimac:lib/cleanup::tests::invalid_schema_controls_fail_during_check",
       "class": "fixture_fs",
       "review": "passed_under_os_sandbox"

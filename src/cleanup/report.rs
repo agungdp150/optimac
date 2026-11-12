@@ -31,6 +31,20 @@ impl ProviderReport {
     pub(super) fn reason(&mut self, reason: &str) {
         *self.skip_reasons.entry(reason.into()).or_default() += 1;
     }
+    pub fn has_incomplete_reasons(&self) -> bool {
+        self.errors > 0
+            || self.skip_reasons.iter().any(|(reason, count)| {
+                *count > 0
+                    && !matches!(
+                        reason.as_str(),
+                        "symlink"
+                            | "hard_link"
+                            | "protected_name"
+                            | "config_exclusion"
+                            | "special_file"
+                    )
+            })
+    }
     pub fn reason_summary(&self) -> String {
         self.skip_reasons
             .iter()

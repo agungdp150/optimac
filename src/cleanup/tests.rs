@@ -21,7 +21,7 @@ fn inventory_preserves_data_counts_hardlinks_once_and_excludes_apple() {
     assert_eq!(r.files, 1);
     assert!(r.skip_reasons.get("symlink").copied().unwrap_or(0) > 0);
     assert!(serde_json::to_value(r).unwrap()["skip_reasons"].is_object());
-    assert_eq!(r.status, Status::Partial);
+    assert_eq!(r.status, Status::Complete);
     assert!(
         !report
             .providers
@@ -678,5 +678,40 @@ fn known_orbstack_virtual_view_is_skipped_without_following_symlink() {
         r.render_options(true, false)
             .contains("Virtual or mounted filesystems skipped")
     );
+    fs::remove_dir_all(home).unwrap();
+}
+
+#[test]
+fn intentional_skips_complete_but_denial_and_budget_are_partial() {
+    use std::os::unix::fs::{PermissionsExt, symlink};
+    let (home, _auth) = crate::fixture_paths::FixtureRoot::create_test_fixture().unwrap();
+    let root = home.join("Library/Caches/ms-playwright");
+    fs::create_dir_all(root.join("blocked")).unwrap();
+    fs::write(root.join("blocked/data"), b"fixture").unwrap();
+    symlink(home.join("never-opened"), root.join("link")).unwrap();
+    let config =
+        config::Config::parse("schema_version=2\n[[rule]]\nid='playwright-browsers'\nenabled=true")
+            .unwrap();
+    let scan =
+        |budget| configured_inventory(&home, &AtomicBool::new(false), budget, &config).unwrap();
+    let report = scan(Budget::quick());
+    assert_eq!(report.providers[0].status, Status::Complete);
+    assert_eq!(report.providers[0].skip_reasons["symlink"], 1);
+    assert!(
+        report
+            .render_filtered(true, true, "all")
+            .contains("1 symlinks not followed")
+    );
+    fs::set_permissions(root.join("blocked"), fs::Permissions::from_mode(0o000)).unwrap();
+    let report = scan(Budget::quick());
+    fs::set_permissions(root.join("blocked"), fs::Permissions::from_mode(0o700)).unwrap();
+    assert_eq!(report.providers[0].status, Status::Partial);
+    assert_eq!(report.providers[0].skip_reasons["permission_denied"], 1);
+    let report = scan(Budget {
+        entries: 1,
+        ..Budget::quick()
+    });
+    assert_eq!(report.providers[0].status, Status::Partial);
+    assert_eq!(report.providers[0].skip_reasons["budget"], 1);
     fs::remove_dir_all(home).unwrap();
 }

@@ -322,3 +322,7 @@ Validation before commit: `make test` passed 90 tests, 4 ignored (94 listed); `m
 ### Slice 1c: skip-reason observations
 
 Added additive `skip_reasons` counts to provider JSON and readable reason counts in scan notes, preserving existing skipped/error fields. Scanner observations distinguish symlinks, hard links, protected/Apple names, configuration exclusions, budget/depth limits, permission denial, vanished entries, I/O errors and mount boundaries. This first piece retains the previous completeness decision for symlinks; completeness and directory-unit link handling follow separately. Validation: make test passed 90 with 4 ignored; isolated recovery passed 4; security and release checks passed. The first run found a clippy item-order warning, fixed before commit.
+
+### Slice 1c: completeness from incomplete reasons
+
+Intentional symlink, hard-link, protected-name/configuration and special-file skips no longer make a scanned provider Partial. Budget/depth, mount, permission, vanished and I/O observations do. A disposable mode-000 directory verifies real permission denial remains Partial; the same fixture verifies intentional skips remain Complete and budget exhaustion remains Partial. Existing hard-link and symlink preservation assertions remain. All four make checks passed: 91 tests passed/4 ignored, isolated recovery 4 passed, security/release passed. Plan handling of internal links and cause-specific plan guidance remain next.
