@@ -109,6 +109,8 @@ fn cleanup_inventory_json_is_read_only_and_reports_unknown_roots() {
     assert!(output.status.success(), "{:?}", output);
     let value: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
     assert_eq!(value["read_only"], true);
+    assert!(value["summary"]["logical_bytes"].is_number());
+    assert!(!String::from_utf8_lossy(&output.stderr).contains("Scanning"));
     assert!(
         value["providers"]
             .as_array()

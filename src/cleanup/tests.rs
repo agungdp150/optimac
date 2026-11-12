@@ -448,3 +448,46 @@ fn root_state_change_after_preflight_is_rechecked() {
     assert_eq!(report.providers[0].logical_bytes, None);
     fs::remove_dir_all(home).unwrap();
 }
+
+#[test]
+fn summary_sorts_and_marks_incomplete_totals() {
+    let rows = (0..20)
+        .map(|n| ProviderReport {
+            provider: format!("item-{n:02}"),
+            root: PathBuf::from(format!("/fixture/{n}")),
+            access: "readable".into(),
+            status: if n == 19 {
+                Status::Partial
+            } else {
+                Status::Complete
+            },
+            logical_bytes: Some(n),
+            allocated_bytes: Some(n),
+            files: 1,
+            skipped: 0,
+            errors: 0,
+            note: if n == 19 {
+                "Budget reached; measured bytes are a lower bound".into()
+            } else {
+                String::new()
+            },
+        })
+        .collect();
+    let report = Inventory {
+        schema_version: 1,
+        read_only: true,
+        providers: rows,
+        available_bytes: Some(50),
+        complete: false,
+        notes: vec!["fixture safety".into()],
+        capabilities: vec![],
+    };
+    let compact = report.render_options(false, false);
+    assert!(compact.starts_with("Summary\nMeasured logical:"));
+    assert!(compact.contains("(lower bound)"));
+    assert!(compact.find("item-19").unwrap() < compact.find("item-18").unwrap());
+    assert!(!compact.contains("item-00"));
+    assert!(report.render_options(true, true).contains("item-00"));
+    assert!(report.render_options(true, true).contains("fixture safety"));
+    assert_eq!(report.summary()["allocated_bytes"], 190);
+}

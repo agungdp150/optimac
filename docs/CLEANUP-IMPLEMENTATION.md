@@ -115,3 +115,8 @@ Default and enabled configured scans resolve pip from PIP_CACHE_DIR first, then 
 Pip source notes now identify PIP_CACHE_DIR and its path. All resolved roots must be inside the supplied home and pass ancestor/symlink validation: the earlier `/private/tmp/...` example was accepted because that temporary directory was the test's HOME, not because outside-home overrides are allowed. Fake-tool fixtures test allowed and rejected roots.
 
 Go build and module caches are resolved separately from GOCACHE/GOMODCACHE, a fixed-candidate `go env` probe, or unverified defaults. Each scan row reports its source; modules remain review-only and unselected. Configured scans use the same resolution for enabled Go rules. Fake Go fixtures cover output, override, invalid root, defaults and command failure. The lightweight executable policy and environment flags do not provide network isolation or authenticate binaries; full enrollment remains required before new mutation adapters.
+
+### Scan readability and coverage follow-up
+
+- Deliverable 1 implemented: compact measured summary, top 15, denied/blocked reasons, --all and --verbose, JSON summary and terminal-only progress clearing. Tests cover summary ordering, partial lower-bound marking, --all and piped stderr. The TUI retains its full output.
+- Deliverables 2–4 remain pending: fallback inventory for refused tool probes; OrbStack/Application Support/Logs coverage; and not-covered/unaccounted-space reporting. Current tool-probe failures can still hide default roots. No relaxation of executable checks is implemented.

@@ -184,7 +184,11 @@ fn main() -> ExitCode {
             if tail[i] == "--config" && config_path.is_none() && i + 1 < tail.len() {
                 config_path = Some(&tail[i + 1]);
                 i += 2;
-            } else if tail[i] == "--json" || tail[i] == "--deep" {
+            } else if tail[i] == "--json"
+                || tail[i] == "--deep"
+                || tail[i] == "--all"
+                || tail[i] == "--verbose"
+            {
                 i += 1;
             } else {
                 valid = false;
@@ -236,15 +240,23 @@ fn main() -> ExitCode {
                 &mut progress,
             )
         };
+        if std::io::IsTerminal::is_terminal(&std::io::stderr()) {
+            eprint!("\r\x1b[2K");
+        }
         return match result {
             Ok(report) => {
                 if tail.iter().any(|a| a == "--json") {
+                    let mut json = serde_json::to_value(&report).expect("serializable report");
+                    json["summary"] = report.summary();
+                    println!("{}", serde_json::to_string_pretty(&json).unwrap());
+                } else {
                     println!(
                         "{}",
-                        serde_json::to_string_pretty(&report).expect("serializable report")
+                        report.render_options(
+                            tail.iter().any(|a| a == "--all"),
+                            tail.iter().any(|a| a == "--verbose")
+                        )
                     );
-                } else {
-                    println!("{}", report.render());
                 }
                 if report.complete {
                     ExitCode::SUCCESS

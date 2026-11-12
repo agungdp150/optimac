@@ -79,45 +79,106 @@ impl Budget {
     }
 }
 impl Inventory {
+    pub fn summary(&self) -> serde_json::Value {
+        let sum = |f: fn(&ProviderReport) -> Option<u64>| {
+            self.providers
+                .iter()
+                .filter_map(f)
+                .fold(0u64, u64::saturating_add)
+        };
+        let count = |status| self.providers.iter().filter(|r| r.status == status).count();
+        serde_json::json!({"logical_bytes": sum(|r| r.logical_bytes), "allocated_bytes": sum(|r| r.allocated_bytes),
+            "lower_bound": self.providers.iter().any(|r| !matches!(r.status, Status::Complete | Status::Absent)),
+            "complete": count(Status::Complete), "partial": count(Status::Partial), "denied": count(Status::Denied), "blocked": count(Status::Blocked), "absent": count(Status::Absent), "home_available_bytes": self.available_bytes})
+    }
     pub fn render(&self) -> String {
-        let mut text = self.notes.join("\n");
-        text.push_str(&format!(
-            "\n\nCoverage: {}\nHome volume available: {}\n",
-            if self.complete {
-                "complete for discovered roots"
-            } else {
-                "partial; inspect provider statuses"
-            },
+        self.render_options(true, true)
+    }
+    pub fn render_options(&self, all: bool, verbose: bool) -> String {
+        let summary = self.summary();
+        let lower = if summary["lower_bound"] == true {
+            " (lower bound)"
+        } else {
+            ""
+        };
+        let mut text = format!(
+            "Summary\nMeasured logical: {}{}; allocated: {}{}\nComplete: {}; partial: {}; denied: {}; blocked: {}; absent: {}\nHome volume available: {}\nOptions: --deep, --all, --verbose; retry: clean retry\n",
+            crate::format_size(summary["logical_bytes"].as_u64().unwrap()),
+            lower,
+            crate::format_size(summary["allocated_bytes"].as_u64().unwrap()),
+            lower,
+            summary["complete"],
+            summary["partial"],
+            summary["denied"],
+            summary["blocked"],
+            summary["absent"],
             self.available_bytes
                 .map(crate::format_size)
-                .unwrap_or_else(|| "unavailable".into())
-        ));
-        let readable = self
+                .unwrap_or_else(|| "unknown".into())
+        );
+        let mut rows: Vec<_> = self
             .providers
             .iter()
-            .filter(|r| r.access == "readable")
-            .count();
-        let denied = self
-            .providers
-            .iter()
-            .filter(|r| r.access == "denied" || r.errors > 0)
-            .count();
-        let absent = self
-            .providers
-            .iter()
-            .filter(|r| r.status == Status::Absent)
-            .count();
-        text.push_str(&format!("Access: {readable} roots readable; {denied} inaccessible or partially inaccessible; {absent} absent.\n"));
-        if denied > 0 {
-            text.push_str(super::access::GUIDANCE);
-            text.push('\n');
+            .filter(|r| r.allocated_bytes.is_some())
+            .collect();
+        rows.sort_by(|a, b| {
+            b.allocated_bytes
+                .cmp(&a.allocated_bytes)
+                .then(a.provider.cmp(&b.provider))
+        });
+        text.push_str("\nTop providers by allocated size\n");
+        for r in rows.into_iter().take(if all { usize::MAX } else { 15 }) {
+            let note = r.note.lines().next().unwrap_or("");
+            text.push_str(&format!(
+                "{} — {:?} — {} — {}\n",
+                r.provider,
+                r.status,
+                crate::format_size(r.allocated_bytes.unwrap()),
+                note
+            ));
         }
-        text.push_str("Retry inventory: CLI clean retry (same options); TUI r.\n");
-        for r in &self.providers {
-            text.push_str(&format!("\n{} — {:?}\n  {:?}\n  logical: {}; allocated estimate: {}; files: {}; skipped: {}; errors: {}\n",r.provider,r.status,r.root,r.logical_bytes.map(crate::format_size).unwrap_or_else(||"unknown".into()),r.allocated_bytes.map(crate::format_size).unwrap_or_else(||"unknown".into()),r.files,r.skipped,r.errors));
-            if !r.note.is_empty() {
-                text.push_str(&format!("  {:?}\n", r.note));
+        text.push_str("\nDenied and blocked\n");
+        for r in self
+            .providers
+            .iter()
+            .filter(|r| matches!(r.status, Status::Denied | Status::Blocked))
+        {
+            let note = r.note.lines().next().unwrap_or("");
+            text.push_str(&format!(
+                "{} — {:?}: {}\n",
+                r.provider,
+                r.status,
+                if verbose {
+                    note.to_string()
+                } else {
+                    note.chars().take(120).collect()
+                }
+            ));
+        }
+        if all {
+            text.push_str("\nAll providers\n");
+            for r in &self.providers {
+                text.push_str(&format!(
+                    "{} — {:?} — {:?} — logical: {}; allocated: {}; {}\n",
+                    r.provider,
+                    r.status,
+                    r.root,
+                    r.logical_bytes
+                        .map(crate::format_size)
+                        .unwrap_or_else(|| "unknown".into()),
+                    r.allocated_bytes
+                        .map(crate::format_size)
+                        .unwrap_or_else(|| "unknown".into()),
+                    r.note
+                ));
             }
+        }
+        if verbose {
+            text.push_str("\nSafety notes\n");
+            text.push_str(&self.notes.join("\n"));
+            text.push('\n');
+        } else {
+            text.push_str("\nSafety notes: use --verbose.\n");
         }
         text
     }
