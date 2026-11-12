@@ -518,6 +518,11 @@
       "review": "passed_under_os_sandbox"
     },
     {
+      "name": "optimac:lib/recovery::unit::tests::directory_unit_production_restore_inspect_and_purge_refusal",
+      "class": "recovery_blocked",
+      "review": "classified"
+    },
+    {
       "name": "optimac:lib/recovery::unit::tests::directory_unit_restore_refuses_existing_destination_missing_or_symlinked_parent",
       "class": "fixture_fs",
       "review": "passed_under_os_sandbox"

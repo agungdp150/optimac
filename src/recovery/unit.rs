@@ -12,7 +12,7 @@ use crate::fixture_paths::FixtureRoot;
 use serde::{Deserialize, Serialize};
 use std::{
     ffi::{CStr, CString},
-    fs::File,
+    fs::{self, File},
     io::{self, Read, Write},
     os::unix::{ffi::OsStrExt, fs::MetadataExt},
     path::{Component, Path, PathBuf},
@@ -370,16 +370,90 @@ impl RecoveryContext {
             record.original_path.display()
         ))
     }
+
+    /// Read-only description of a directory-unit record. Nothing is replayed.
+    pub fn inspect_directory_unit(&self, id: &str) -> io::Result<String> {
+        let _lock = self.lock()?;
+        let directory = self.open_record_dir(id)?;
+        let StoredRecord::Unit(record) = read_record_at(&directory)? else {
+            return Err(error("Not a directory-unit record"));
+        };
+        describe(&directory, id, &record)
+    }
+}
+
+/// Shared by the fixture inspector and the existing `recovery inspect` path.
+pub(super) fn describe(directory: &File, id: &str, record: &UnitRecord) -> io::Result<String> {
+    let payload = present(directory, c"payload")?;
+    let moved = present(directory, c"move-completed")?.is_some();
+    let intent = present(directory, c"restore-intent")?.is_some();
+    let restored = present(directory, c"restore-completed")?.is_some();
+    let state = match (&payload, moved, intent, restored) {
+        (Some(st), ..) if !identity_matches(st, record) => {
+            "needs_reconciliation: payload identity differs from the record; nothing replayed"
+        }
+        (Some(_), true, false, false) => "moved: payload in recovery; restore available",
+        (Some(_), false, false, false) => {
+            "interrupted_after_move: payload in recovery without completion marker; not replayed; restore available"
+        }
+        (None, false, false, false) => {
+            "recorded_not_moved: record written but no payload; move not replayed"
+        }
+        (Some(_), _, true, false) => {
+            "interrupted_restore: payload still in recovery; restore may be retried"
+        }
+        (None, _, true, true) => "restored: payload returned to its original path",
+        (None, _, true, false) => {
+            "needs_reconciliation: payload absent after restore intent without completion; cause not inferred"
+        }
+        _ => "needs_reconciliation: inconsistent markers; cause not inferred",
+    };
+    let original = match fs::symlink_metadata(&record.original_path) {
+        Err(e) if e.kind() == io::ErrorKind::NotFound => "absent".to_string(),
+        Err(e) => format!("unreadable ({e})"),
+        Ok(m) if !m.is_dir() || m.file_type().is_symlink() => "present, not a directory".into(),
+        Ok(m) if m.dev() == record.device && m.ino() == record.inode => {
+            "present, matches recorded identity".into()
+        }
+        Ok(_) => "present, different identity".into(),
+    };
+    Ok(format!(
+        "Recovery {id}: {kind} record (schema {version})\n\
+         State: {state}\n\
+         Original path: {path} ({original})\n\
+         Provider: {provider}\n\
+         Plan: {plan}\n\
+         Recorded identity: device {device}, inode {inode}, owner {owner}, type {kind_of}\n\
+         Recorded size: {allocated} allocated, {logical} logical (plan estimate; not re-measured)\n\
+         Recorded at: {created} (Unix seconds)\n\
+         Payload: {id}/{payload_name} ({payload_state})\n\
+         Inspection only; nothing was moved, restored or replayed.",
+        kind = record.kind,
+        version = record.version,
+        path = record.original_path.display(),
+        provider = record.provider,
+        plan = record.plan_id,
+        device = record.device,
+        inode = record.inode,
+        owner = record.owner,
+        kind_of = record.file_type,
+        allocated = crate::format_size(record.allocated_bytes),
+        logical = crate::format_size(record.logical_bytes),
+        created = record.created_at_unix_seconds,
+        payload_name = record.payload,
+        payload_state = if payload.is_some() {
+            "present"
+        } else {
+            "absent"
+        },
+    ))
 }
 
 #[cfg(all(test, target_os = "macos"))]
 mod tests {
     use super::*;
-    use crate::recovery::RecoveryPolicy;
-    use std::{
-        fs,
-        os::unix::fs::{PermissionsExt, symlink},
-    };
+    use crate::recovery::{RecoveryPolicy, purge};
+    use std::os::unix::fs::{PermissionsExt, symlink};
 
     const PLAN: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 
@@ -513,6 +587,27 @@ mod tests {
         let stored: UnitRecord =
             serde_json::from_slice(&fs::read(s.record_dir("1001/record.json")).unwrap()).unwrap();
         assert_eq!(stored, r);
+        let moved = s.context.inspect_directory_unit("1001").unwrap();
+        println!("INSPECT_BEFORE_RESTORE\n{moved}");
+        assert_eq!(
+            moved,
+            format!(
+                "Recovery 1001: plan_directory_unit record (schema 2)\n\
+                 State: moved: payload in recovery; restore available\n\
+                 Original path: {} (absent)\n\
+                 Provider: playwright-browsers\n\
+                 Plan: {PLAN}\n\
+                 Recorded identity: device {}, inode {}, owner {}, type directory\n\
+                 Recorded size: 384.00 MB allocated, 380.00 MB logical (plan estimate; not re-measured)\n\
+                 Recorded at: 1000000 (Unix seconds)\n\
+                 Payload: 1001/payload (present)\n\
+                 Inspection only; nothing was moved, restored or replayed.",
+                s.unit.display(),
+                r.device,
+                r.inode,
+                r.owner
+            )
+        );
         assert_eq!(snapshot(&s.record_dir("1001/payload")), before);
         assert!(
             s.context
@@ -521,6 +616,11 @@ mod tests {
                 .contains("Restored")
         );
         assert_eq!(snapshot(&s.unit), before);
+        let restored = s.context.inspect_directory_unit("1001").unwrap();
+        println!("INSPECT_AFTER_RESTORE\n{restored}");
+        assert!(restored.contains("State: restored: payload returned to its original path"));
+        assert!(restored.contains("(present, matches recorded identity)"));
+        assert!(restored.contains("Payload: 1001/payload (absent)"));
         assert!(
             s.context
                 .restore_directory_unit(Some(&s.cap), "1001")
@@ -588,6 +688,9 @@ mod tests {
         assert!(err.to_string().contains("symlink"), "{err}");
         assert_eq!(fs::read_dir(&moved_parent).unwrap().count(), 0);
         assert!(s.record_dir("2001/payload").is_dir());
+        // Refusals happen before the restore intent is written.
+        let inspect = s.context.inspect_directory_unit("2001").unwrap();
+        assert!(inspect.contains("State: moved"), "{inspect}");
         assert_eq!(
             listing(&s.record_dir("2001")),
             ["move-completed", "payload", "record.json"]
@@ -665,6 +768,14 @@ mod tests {
         );
         drop(lock);
         assert_eq!(listing(&s.record_dir("4001")), ["record.json"]);
+        for _ in 0..2 {
+            let text = s.context.inspect_directory_unit("4001").unwrap();
+            assert!(
+                text.contains("State: recorded_not_moved")
+                    && text.contains("(present, matches recorded identity)"),
+                "{text}"
+            );
+        }
         assert!(
             s.context
                 .restore_directory_unit(Some(&s.cap), "4001")
@@ -685,22 +796,31 @@ mod tests {
         );
         drop(lock);
         assert_eq!(listing(&s.record_dir("4002")), ["payload", "record.json"]);
+        for _ in 0..2 {
+            let text = s.context.inspect_directory_unit("4002").unwrap();
+            assert!(text.contains("State: interrupted_after_move"), "{text}");
+            assert!(text.contains("(absent)"), "{text}");
+        }
         assert_eq!(listing(&s.record_dir("4002")), ["payload", "record.json"]);
         assert!(!s.unit.exists());
         s.context
             .restore_directory_unit(Some(&s.cap), "4002")
             .unwrap();
         assert_eq!(snapshot(&s.unit), before);
+        assert!(
+            s.context
+                .inspect_directory_unit("4002")
+                .unwrap()
+                .contains("State: restored")
+        );
         assert_eq!(listing(&s.record_dir("4001")), ["record.json"]);
     }
 
     #[test]
     fn recovery_record_versions_load_v1_and_unit_records_fail_closed() {
-        let (home, cap) = FixtureRoot::create_test_fixture().unwrap();
-        let context =
-            RecoveryContext::initialize(&home, RecoveryPolicy::Fixture(Some(&cap))).unwrap();
-        let lock = context.lock().unwrap();
-        let legacy = home.join(".cache/pip/legacy");
+        let s = Setup::new();
+        let lock = s.context.lock().unwrap();
+        let legacy = s.home.join(".cache/pip/legacy");
         fs::create_dir_all(legacy.parent().unwrap()).unwrap();
         fs::write(&legacy, b"v1").unwrap();
         let m = fs::metadata(&legacy).unwrap();
@@ -708,27 +828,29 @@ mod tests {
             "path": legacy, "dev": m.dev(), "ino": m.ino(), "size": m.len(), "modified": m.mtime()
         }))
         .unwrap();
-        context.create_journal("5001", &candidate).unwrap();
+        let v1 = s.context.create_journal("5001", &candidate).unwrap();
         drop(lock);
-        let stored = fs::read(home.join(".optimac-rust-recovery/5001/record.json")).unwrap();
-        let StoredRecord::V1(old) = parse_record(&stored).unwrap() else {
+        let StoredRecord::V1(old) = read_record_at(&v1).unwrap() else {
             panic!("v1 record must still load as v1");
         };
         assert_eq!(old.version, 1);
         assert_eq!(old.candidate.path, legacy);
-
-        let unit = home.join("Library/Caches/ms-playwright/chromium-1248");
-        fs::create_dir_all(&unit).unwrap();
-        let m = fs::symlink_metadata(&unit).unwrap();
-        let r = UnitRecord::directory(
-            unit.clone(),
-            "playwright-browsers",
-            PLAN,
-            (m.dev(), m.ino(), m.uid()),
-            (384_000_000, 380_000_000),
-            1_000_000,
+        assert!(
+            s.context
+                .inspect_directory_unit("5001")
+                .unwrap_err()
+                .to_string()
+                .contains("Not a directory-unit")
         );
-        r.validate(&home, &context.root).unwrap();
+        assert!(
+            s.context
+                .restore_directory_unit(Some(&s.cap), "5001")
+                .is_err()
+        );
+        assert_eq!(fs::read(&legacy).unwrap(), b"v1");
+        let lock = s.context.lock().unwrap();
+
+        let r = record(&s.unit);
         let bytes = serde_json::to_vec(&r).unwrap();
         assert!(matches!(parse_record(&bytes).unwrap(), StoredRecord::Unit(u) if u == r));
         // A version-1 reader cannot mistake a unit record for a file record.
@@ -751,22 +873,70 @@ mod tests {
                 ..r.clone()
             },
             UnitRecord {
-                original_path: home.join("Library/Caches/ms-playwright/../../Keychains"),
+                original_path: s.home.join("Library/Caches/ms-playwright/../../Keychains"),
                 ..r.clone()
             },
             UnitRecord {
-                original_path: home.join(".optimac-rust-recovery/5001"),
+                original_path: s.home.join(".optimac-rust-recovery/5001"),
                 ..r.clone()
             },
             UnitRecord {
-                original_path: home.join("Documents"),
+                original_path: s.home.join("Documents"),
                 ..r.clone()
             },
         ] {
-            assert!(bad.validate(&home, &context.root).is_err(), "{bad:?}");
+            assert!(bad.validate(&s.home, &s.context.root).is_err(), "{bad:?}");
+            assert!(
+                s.context
+                    .move_directory_unit(&lock, Some(&s.cap), "5002", &bad)
+                    .is_err()
+            );
         }
-        drop(context);
-        drop(cap);
-        fs::remove_dir_all(home).unwrap();
+        assert!(!s.record_dir("5002").exists());
+    }
+
+    #[test]
+    #[ignore = "Requires production recovery policy; run make test-recovery-isolated under OS sandbox"]
+    fn directory_unit_production_restore_inspect_and_purge_refusal() {
+        let home = std::env::temp_dir()
+            .canonicalize()
+            .unwrap()
+            .join(format!("optimac-unit-production-{}", std::process::id()));
+        let outside = home.with_extension("outside");
+        fs::create_dir_all(&home).unwrap();
+        let unit = bundle(&home, &outside);
+        let before = snapshot(&unit);
+        let r = record(&unit);
+        let context = RecoveryContext::initialize(&home, RecoveryPolicy::Production).unwrap();
+        let lock = context.lock().unwrap();
+        context
+            .move_directory_unit(&lock, None, "6001", &r)
+            .unwrap();
+        drop(lock);
+        let inspect = purge::inspect(RecoveryPolicy::Production, &home, "6001").unwrap();
+        assert!(
+            inspect.contains("plan_directory_unit record (schema 2)"),
+            "{inspect}"
+        );
+        assert!(inspect.contains("State: moved"), "{inspect}");
+        let err = purge::plan(RecoveryPolicy::Production, &home, "6001").unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("directory purge is not implemented"),
+            "{err}"
+        );
+        let payload = home.join(".optimac-rust-recovery/6001/payload");
+        assert_eq!(snapshot(&payload), before);
+        assert_eq!(crate::recovery::recovery_ids(&home), ["6001"]);
+        crate::recovery::restore(RecoveryPolicy::Production, &home, "6001").unwrap();
+        assert_eq!(snapshot(&unit), before);
+        assert!(
+            purge::inspect(RecoveryPolicy::Production, &home, "6001")
+                .unwrap()
+                .contains("State: restored")
+        );
+        assert!(purge::plan(RecoveryPolicy::Production, &home, "6001").is_err());
+        fs::remove_dir_all(&home).unwrap();
+        fs::remove_dir_all(&outside).unwrap();
     }
 }

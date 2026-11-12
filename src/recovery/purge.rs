@@ -202,6 +202,10 @@ pub fn inspect(policy: RecoveryPolicy<'_>, home: &Path, id: &str) -> io::Result<
     let root = recovery_root(policy, home)?;
     let _lock = operation_lock(&root)?;
     let dir = fs_ops::open_dir(&root.join(id))?;
+    // Directory-unit records have their own lifecycle; describe it read-only.
+    if let Ok(super::unit::StoredRecord::Unit(record)) = super::unit::read_record_at(&dir) {
+        return super::unit::describe(&dir, id, &record);
+    }
     let probe = |name: &std::ffi::CStr| -> io::Result<bool> {
         match open_child(&dir, name, libc::O_RDONLY) {
             Ok(_) => Ok(true),
