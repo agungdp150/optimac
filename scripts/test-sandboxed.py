@@ -12,9 +12,28 @@ ROOT = Path(__file__).resolve().parent.parent
 SANDBOX = '/usr/bin/sandbox-exec'
 
 
+def recovery_metadata(root):
+    """Outer observer only: lstat and directory names, never file contents or links."""
+    import stat
+    result = []
+    pending = [root]
+    while pending:
+        path = pending.pop()
+        try:
+            info = path.lstat()
+        except FileNotFoundError:
+            result.append((str(path.relative_to(root)), 'absent'))
+            continue
+        result.append((str(path.relative_to(root)), info.st_mode, info.st_size, info.st_mtime_ns))
+        if stat.S_ISDIR(info.st_mode):
+            pending.extend(path.iterdir())
+    return sorted(result)
+
+
 def run():
     parser = argparse.ArgumentParser()
     parser.add_argument('--list-only', action='store_true')
+    parser.add_argument('--canary-only', action='store_true')
     args = parser.parse_args()
     if sys.platform != 'darwin' or not Path(SANDBOX).is_file():
         raise RuntimeError('sandbox-exec is required; environment-only isolation is forbidden')
@@ -60,6 +79,26 @@ def run():
                 raise RuntimeError(f'Sandbox command failed ({result.returncode}): {command}\n{result.stdout}{result.stderr}\nNo unsandboxed fallback permitted.')
             return result.stdout
         isolated(['/usr/bin/true'])
+        # Compile the canary outside Seatbelt. It uses create_new, never truncation.
+        source = temp / 'canary.rs'
+        source.write_text(r'''use std::fs::OpenOptions;
+fn main() {
+    let args: Vec<_> = std::env::args().collect();
+    for path in &args[1..3] {
+        let error = OpenOptions::new().write(true).create_new(true).open(path)
+            .expect_err("sandbox allowed forbidden write");
+        assert_eq!(error.kind(), std::io::ErrorKind::PermissionDenied, "{path}: {error}");
+    }
+    std::fs::write(&args[3], b"fixture canary").unwrap();
+    println!("canary: real home denied; real recovery denied; temporary write allowed");
+}''')
+        canary = temp / 'canary'
+        subprocess.run(['rustc', str(source), '-o', str(canary)], cwd=ROOT, check=True)
+        recovery = home / '.optimac-rust-recovery'
+        nonce = temp.name + '-canary'
+        print(isolated([str(canary), str(home / nonce), str(recovery / nonce), str(temp / 'canary-output')]), flush=True)
+        if args.canary_only:
+            return
         count = 0
         for exe in executables:
             listing = isolated([str(exe), '--list'])
@@ -67,8 +106,22 @@ def run():
         print(f'Sandboxed harness discovery: {count} tests', flush=True)
         if args.list_only:
             return
-        for exe in executables:
-            print(isolated([str(exe)]), flush=True)
+        before = recovery_metadata(recovery)
+        failures = []
+        try:
+            for exe in executables:
+                try:
+                    print(isolated([str(exe)]), flush=True)
+                except RuntimeError as error:
+                    failures.append(str(error))
+                    print(error, file=sys.stderr, flush=True)
+        finally:
+            after = recovery_metadata(recovery)
+            if before != after:
+                raise RuntimeError('Real recovery metadata CHANGED')
+            print(f'Real recovery metadata unchanged ({len(before)} entries)', flush=True)
+        if failures:
+            raise RuntimeError(f'{len(failures)} test harnesses failed; full suite is not green')
         print(f'Sandboxed full suite complete: {count} listed tests (see harness ignored counts)')
 
 
