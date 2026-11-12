@@ -26,7 +26,7 @@ pub fn resolve(home: &Path, cancel: &AtomicBool) -> GoRoots {
         cancel,
     )
 }
-fn resolve_with(
+pub(super) fn resolve_with(
     home: &Path,
     build: Option<OsString>,
     modules: Option<OsString>,

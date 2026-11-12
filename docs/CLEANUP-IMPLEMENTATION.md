@@ -122,3 +122,10 @@ Go build and module caches are resolved separately from GOCACHE/GOMODCACHE, a fi
 - Deliverables 2–4 remain pending: fallback inventory for refused tool probes; OrbStack/Application Support/Logs coverage; and not-covered/unaccounted-space reporting. Current tool-probe failures can still hide default roots. No relaxation of executable checks is implemented.
 
 Deliverable 2 progress: refused pip/Go candidates now remain unexecuted while the corresponding default roots are offered for read-only inventory with an explicit refusal/unverified note. Environment roots remain preferred; safety checks are unchanged. Fixture coverage checks pip and Go refused-symlink fallback; additional full-scan snapshot coverage remains pending. No group-writable ownership exception has been adopted; root:admin group-writable directories would require an explicit future user decision and security design. Deliverables 3 and 4 remain unimplemented.
+
+### Coverage follow-up (deliverables 3–5)
+
+- Added read-only OrbStack filesystem estimates, per-directory Application Support and user Logs inventory, with review labels and opt-in config rules. Docker Desktop remains a filesystem estimate. Apple-name and protected-name exclusions apply; name-based filtering cannot reliably identify every Apple-owned or sensitive application directory. No daemon is contacted. Downloads/Documents remain opt-in.
+- Added a not-covered section and home-used-minus-measured-allocated estimate; the estimate is not reclaimed storage and may be distorted by shared extents, other-volume configured roots, concurrent changes and APFS accounting. Missing capacity or a negative result is unavailable.
+- Added full inventory fixtures using refused fake pip/Go candidates and measured default roots. These use assertions on report text rather than a snapshot framework.
+- Validation: make test, make security and make release-check passed for each of deliverables 3–5. One earlier deliverable 4 test run hit a recovery-operation lock contention; a fresh full run passed.

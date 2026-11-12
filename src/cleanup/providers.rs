@@ -112,11 +112,22 @@ pub fn inventory_with_progress(
     budget: Budget,
     progress: &mut dyn FnMut(&ProviderReport),
 ) -> io::Result<Inventory> {
+    let pip = super::pip::resolve(home, cancel);
+    let go = super::go::resolve(home, cancel);
+    inventory_with_resolutions(home, cancel, budget, progress, pip, go)
+}
+
+pub(super) fn inventory_with_resolutions(
+    home: &Path,
+    cancel: &AtomicBool,
+    budget: Budget,
+    progress: &mut dyn FnMut(&ProviderReport),
+    pip: super::pip::Resolution,
+    go: super::go::GoRoots,
+) -> io::Result<Inventory> {
     validate(home)?;
     let deadline = Instant::now() + budget.total;
     let mut roots = Vec::new();
-    let pip = super::pip::resolve(home, cancel);
-    let go = super::go::resolve(home, cancel);
     for &(id, relative) in super::registry::ROOTS {
         if id == "go-build" || id == "go-modules" {
             let g = if id == "go-build" {

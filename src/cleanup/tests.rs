@@ -546,3 +546,50 @@ fn application_support_logs_and_orbstack_are_review_only() {
     );
     fs::remove_dir_all(home).unwrap();
 }
+
+#[test]
+fn full_scan_refused_probes_still_measure_default_roots() {
+    use std::os::unix::fs::symlink;
+    let home = std::env::current_dir()
+        .unwrap()
+        .join(format!(".optimac-refused-scan-{}", std::process::id()));
+    for dir in [
+        "Library/Caches/pip",
+        "Library/Caches/go-build",
+        "go/pkg/mod",
+    ] {
+        fs::create_dir_all(home.join(dir)).unwrap();
+        fs::write(home.join(dir).join("fixture"), b"fixture").unwrap();
+    }
+    let fake = home.join("fake");
+    fs::write(&fake, b"not a program").unwrap();
+    let link = home.join("fake-link");
+    symlink(&fake, &link).unwrap();
+    let paths = [link.to_str().unwrap()];
+    let cancel = AtomicBool::new(false);
+    let pip = super::pip::resolve_with(&home, None, &paths, &cancel);
+    let go = super::go::resolve_with(&home, None, None, &paths, &cancel);
+    let report = providers::inventory_with_resolutions(
+        &home,
+        &cancel,
+        Budget::quick(),
+        &mut |_| {},
+        pip,
+        go,
+    )
+    .unwrap();
+    for id in ["pip-cache", "go-build", "go-modules"] {
+        let row = report.providers.iter().find(|r| r.provider == id).unwrap();
+        assert_eq!(row.logical_bytes, Some(7), "{id}");
+        assert!(
+            row.note.contains("tool not run: candidate refused"),
+            "{}",
+            row.note
+        );
+        assert!(row.note.contains("default, not verified"));
+        let rendered = report.render_options(true, false);
+        assert!(rendered.contains(id));
+        assert!(rendered.contains("tool not run: candidate refused"));
+    }
+    fs::remove_dir_all(home).unwrap();
+}

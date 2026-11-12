@@ -81,7 +81,7 @@ pub fn resolve(home: &Path, cancel: &std::sync::atomic::AtomicBool) -> Resolutio
     resolve_with(home, std::env::var_os("PIP_CACHE_DIR"), candidates, cancel)
 }
 
-fn resolve_with(
+pub(super) fn resolve_with(
     home: &Path,
     env: Option<std::ffi::OsString>,
     candidates: &[&str],
