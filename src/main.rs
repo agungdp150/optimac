@@ -10,6 +10,11 @@ use std::{
 
 fn main() -> ExitCode {
     let args: Vec<_> = std::env::args_os().skip(1).collect();
+    #[cfg(feature = "fixture-only")]
+    if args == ["--fixture-only-test-probe"] {
+        println!("optimac-fixture-only-v1");
+        return ExitCode::SUCCESS;
+    }
     if args == ["version"] || args == ["--version"] {
         println!("{}", env!("CARGO_PKG_VERSION"));
         return ExitCode::SUCCESS;

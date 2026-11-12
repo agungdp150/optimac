@@ -135,16 +135,18 @@ mod tests {
     use super::*;
     use std::os::unix::fs::symlink;
 
+    static NEXT_FIXTURE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
     struct Fixture(PathBuf);
     impl Fixture {
         fn new() -> Self {
             let path = std::env::temp_dir().canonicalize().unwrap().join(format!(
-                "optimac-context-{}-{}",
+                "optimac-context-{}-{}-{}",
                 std::process::id(),
                 SystemTime::now()
                     .duration_since(UNIX_EPOCH)
                     .unwrap()
-                    .as_nanos()
+                    .as_nanos(),
+                NEXT_FIXTURE.fetch_add(1, Ordering::Relaxed)
             ));
             let mut builder = fs::DirBuilder::new();
             use std::os::unix::fs::DirBuilderExt;

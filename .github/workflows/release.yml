@@ -19,7 +19,7 @@ jobs:
         with:
           components: rustfmt, clippy
 
-      - name: Verify build and tests
+      - name: Run focused fixture-only tests and verify build
         run: |
           make test
           make build

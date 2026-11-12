@@ -32,7 +32,7 @@ jobs:
         with:
           components: rustfmt, clippy
 
-      - name: Test
+      - name: Focused fixture-only tests (full suite pending)
         run: make test
 
   dependency-review:

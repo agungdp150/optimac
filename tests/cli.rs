@@ -1,10 +1,38 @@
+#[cfg(not(feature = "fixture-only"))]
+compile_error!("CLI integration tests require --features fixture-only");
+
 use std::process::Command;
+fn is_fixture_cli(executable: &std::path::Path) -> bool {
+    Command::new(executable)
+        .arg("--fixture-only-test-probe")
+        .output()
+        .is_ok_and(|output| {
+            output.status.success() && output.stdout == b"optimac-fixture-only-v1\n"
+        })
+}
+
+fn fixture_cli() -> Command {
+    let executable = std::path::Path::new(env!("CARGO_BIN_EXE_optimac"));
+    assert!(
+        is_fixture_cli(executable),
+        "refusing unavailable or non-fixture CLI"
+    );
+    Command::new(executable)
+}
+
+#[test]
+fn fixture_cli_rejects_missing_executable() {
+    let fixture = std::env::temp_dir().join(format!("optimac-missing-cli-{}", std::process::id()));
+    assert!(!is_fixture_cli(&fixture));
+    // An executable that cannot answer the fixture probe is refused too.
+    std::fs::write(&fixture, b"not an executable").unwrap();
+    assert!(!is_fixture_cli(&fixture));
+    std::fs::remove_file(fixture).unwrap();
+}
+
 #[test]
 fn version_matches_manifest() {
-    let output = Command::new(env!("CARGO_BIN_EXE_optimac"))
-        .arg("version")
-        .output()
-        .unwrap();
+    let output = fixture_cli().arg("version").output().unwrap();
     assert!(output.status.success());
     assert_eq!(
         String::from_utf8(output.stdout).unwrap().trim(),
@@ -21,10 +49,7 @@ fn legacy_mutations_fail_explicitly() {
         "trash",
         "optimize",
     ] {
-        let output = Command::new(env!("CARGO_BIN_EXE_optimac"))
-            .args([command, "--execute"])
-            .output()
-            .unwrap();
+        let output = fixture_cli().args([command, "--execute"]).output().unwrap();
         assert_eq!(output.status.code(), Some(2));
         assert!(String::from_utf8_lossy(&output.stderr).contains("not yet ported"));
     }
@@ -37,11 +62,7 @@ fn analysis_and_duplicates_use_disposable_fixtures() {
     std::fs::write(root.join("first"), b"same content").unwrap();
     std::fs::write(root.join("second"), b"same content").unwrap();
     for command in ["analyze", "duplicates", "artifacts"] {
-        let output = Command::new(env!("CARGO_BIN_EXE_optimac"))
-            .arg(command)
-            .arg(&root)
-            .output()
-            .unwrap();
+        let output = fixture_cli().arg(command).arg(&root).output().unwrap();
         assert!(
             output.status.success(),
             "{}",
@@ -66,11 +87,7 @@ fn artifact_sizes_sum_scanned_files() {
     std::fs::create_dir_all(root.join("node_modules/nested")).unwrap();
     std::fs::write(root.join("node_modules/a"), vec![0; 1000]).unwrap();
     std::fs::write(root.join("node_modules/nested/b"), vec![0; 1500]).unwrap();
-    let output = Command::new(env!("CARGO_BIN_EXE_optimac"))
-        .arg("artifacts")
-        .arg(&root)
-        .output()
-        .unwrap();
+    let output = fixture_cli().arg("artifacts").arg(&root).output().unwrap();
     assert!(output.status.success());
     assert!(String::from_utf8_lossy(&output.stdout).contains("2.50 KB"));
     std::fs::remove_dir_all(root).unwrap();
@@ -79,10 +96,7 @@ fn artifact_sizes_sum_scanned_files() {
 #[test]
 fn retired_commands_explain_why() {
     for command in ["threats", "orphans"] {
-        let output = Command::new(env!("CARGO_BIN_EXE_optimac"))
-            .arg(command)
-            .output()
-            .unwrap();
+        let output = fixture_cli().arg(command).output().unwrap();
         assert_eq!(output.status.code(), Some(2));
         assert!(String::from_utf8_lossy(&output.stderr).contains("retired"));
     }
@@ -98,7 +112,7 @@ fn cleanup_inventory_json_is_read_only_and_reports_unknown_roots() {
     std::fs::create_dir_all(home.join("pip-fixture")).unwrap();
     let file = home.join("Library/Caches/fixture/data");
     std::fs::write(&file, b"unchanged").unwrap();
-    let output = std::process::Command::new(env!("CARGO_BIN_EXE_optimac"))
+    let output = fixture_cli()
         .args(["clean", "scan", "--json"])
         .env("HOME", &home)
         .env("PIP_CACHE_DIR", home.join("pip-fixture"))
@@ -151,7 +165,7 @@ exclude_name_patterns = ["*.tmp"]
 "#;
     std::fs::write(&config, text).unwrap();
     let run = || {
-        Command::new(env!("CARGO_BIN_EXE_optimac"))
+        fixture_cli()
             .args(["clean", "scan", "--json", "--config"])
             .arg(&config)
             .env("HOME", &home)
@@ -165,7 +179,7 @@ exclude_name_patterns = ["*.tmp"]
         String::from_utf8_lossy(&result.stderr)
     );
     let report: serde_json::Value = serde_json::from_slice(&result.stdout).unwrap();
-    let categorized = Command::new(env!("CARGO_BIN_EXE_optimac"))
+    let categorized = fixture_cli()
         .args(["clean", "scan", "--json", "--by-category", "--config"])
         .arg(&config)
         .env("HOME", &home)
@@ -201,7 +215,7 @@ exclude_name_patterns = ["*.tmp"]
 
 #[test]
 fn invalid_class_is_usage_error_before_scanning() {
-    let result = Command::new(env!("CARGO_BIN_EXE_optimac"))
+    let result = fixture_cli()
         .args(["clean", "scan", "--class", "invalid"])
         .output()
         .unwrap();
@@ -217,7 +231,7 @@ fn fixture_paths_are_used_by_cli_history() {
     std::fs::create_dir(&fixture).unwrap();
     let paths = optimac::paths::AppPaths::from_home(Some(fixture.as_os_str().to_owned())).unwrap();
     let expected = optimac::recovery::history(paths.home()).unwrap();
-    let output = Command::new(env!("CARGO_BIN_EXE_optimac"))
+    let output = fixture_cli()
         .arg("history")
         .env("HOME", &fixture)
         .output()
@@ -244,7 +258,7 @@ fn fixture_recovery_cli_cannot_select_production_policy() {
             .as_nanos()
     ));
     std::fs::create_dir(&root).unwrap();
-    let output = Command::new(env!("CARGO_BIN_EXE_optimac"))
+    let output = fixture_cli()
         .env("HOME", &root)
         .args(["recovery", "inspect", "123"])
         .output()

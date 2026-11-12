@@ -6,8 +6,8 @@ build:
 	cp target/release/$(BINARY) bin/$(BINARY)
 test:
 	cargo fmt --check
-	cargo test --locked
-	cargo clippy --locked --all-targets -- -D warnings
+	./scripts/test-safe.sh
+	cargo clippy --locked --features fixture-only --all-targets -- -D warnings
 security:
 	./scripts/security-scan.sh
 release-check:
