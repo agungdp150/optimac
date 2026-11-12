@@ -606,3 +606,40 @@ fn plan_internal_links_and_denied_provider_have_honest_cli_messages() {
     std::fs::set_permissions(&denied, std::fs::Permissions::from_mode(0o700)).unwrap();
     std::fs::remove_dir_all(home).unwrap();
 }
+
+#[test]
+fn clean_apply_cli_is_interactive_only_and_changes_nothing() {
+    let (home, _authorization) = authorized_home();
+    let id = "0".repeat(64);
+    for args in [
+        vec!["clean", "apply"],
+        vec!["clean", "apply", id.as_str(), "--yes"],
+    ] {
+        let output = fixture_cli()
+            .args(&args)
+            .env("HOME", &home)
+            .output()
+            .unwrap();
+        assert_eq!(output.status.code(), Some(2));
+        assert!(String::from_utf8_lossy(&output.stderr).contains("Usage: optimac clean apply"));
+    }
+    let output = fixture_cli()
+        .args(["clean", "apply", id.as_str()])
+        .env("HOME", &home)
+        .stdin(std::process::Stdio::null())
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(2));
+    assert!(
+        String::from_utf8_lossy(&output.stderr)
+            .contains("requires an interactive terminal; there is no noninteractive mode")
+    );
+    let inspect = fixture_cli()
+        .args(["recovery", "inspect", id.as_str()])
+        .env("HOME", &home)
+        .output()
+        .unwrap();
+    assert!(!inspect.status.success());
+    assert_eq!(std::fs::read_dir(&home).unwrap().count(), 0);
+    std::fs::remove_dir_all(home).unwrap();
+}

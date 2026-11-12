@@ -14,8 +14,7 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-pub const WARNING: &str =
-    "This plan changes nothing. Applying it is a separate step that does not exist yet.";
+pub const WARNING: &str = "This plan changes nothing. Applying it is a separate confirmed step (optimac clean apply PLAN-ID) that moves units to the OptiMac recovery folder and does not free disk space.";
 fn usage() -> io::Error {
     io::Error::new(
         io::ErrorKind::InvalidInput,

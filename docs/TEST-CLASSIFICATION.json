@@ -13,6 +13,11 @@
       "review": "passed_under_os_sandbox"
     },
     {
+      "name": "cli:test/clean_apply_cli_is_interactive_only_and_changes_nothing",
+      "class": "fixture_fs",
+      "review": "passed_under_os_sandbox"
+    },
+    {
       "name": "cli:test/clean_plan_cli_respects_config_exclusions_and_keeps_files_unchanged",
       "class": "fixture_fs",
       "review": "passed_under_os_sandbox"

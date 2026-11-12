@@ -8,6 +8,83 @@ use std::{
     },
 };
 
+fn unix_now() -> u64 {
+    // A clock failure yields 0, which plan freshness rejects as a future plan.
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs())
+}
+
+fn apply_env<'a>(
+    paths: &'a optimac::paths::AppPaths,
+    cancel: &'a AtomicBool,
+    clock: &'a dyn Fn() -> u64,
+) -> optimac::cleanup::apply::Env<'a> {
+    optimac::cleanup::apply::Env {
+        paths,
+        policy: optimac::recovery::RecoveryPolicy::Production,
+        authority: None,
+        budget: optimac::cleanup::Budget::deep(),
+        cancel,
+        clock,
+    }
+}
+
+/// Interactive only: review, default-No confirmation, then recovery moves.
+fn clean_apply(args: &[std::ffi::OsString], cancel: &AtomicBool) -> ExitCode {
+    use std::io::{IsTerminal, Write};
+    let Some(id) = args
+        .first()
+        .and_then(|a| a.to_str())
+        .filter(|_| args.len() == 1)
+    else {
+        eprintln!("Usage: optimac clean apply PLAN-ID");
+        return ExitCode::from(2);
+    };
+    if !std::io::stdin().is_terminal() || !std::io::stdout().is_terminal() {
+        eprintln!(
+            "clean apply requires an interactive terminal; there is no noninteractive mode. Nothing changed."
+        );
+        return ExitCode::from(2);
+    }
+    let paths = match optimac::paths::AppPaths::from_env() {
+        Ok(paths) => paths,
+        Err(e) => {
+            eprintln!("{e}");
+            return ExitCode::FAILURE;
+        }
+    };
+    let clock = unix_now;
+    let env = apply_env(&paths, cancel, &clock);
+    let mut activity = optimac::cleanup::activity::ProcessActivity::default();
+    let mut confirm = |prompt: &str| -> std::io::Result<bool> {
+        print!("{prompt}");
+        std::io::stdout().flush()?;
+        let mut answer = String::new();
+        std::io::stdin().read_line(&mut answer)?;
+        Ok(matches!(
+            answer.trim().to_ascii_lowercase().as_str(),
+            "y" | "yes"
+        ))
+    };
+    match optimac::cleanup::apply::apply(
+        &env,
+        id,
+        &mut activity,
+        &mut confirm,
+        &mut std::io::stdout(),
+    ) {
+        Ok(outcome) if outcome.declined || (outcome.skipped == 0 && outcome.failed == 0) => {
+            ExitCode::SUCCESS
+        }
+        Ok(_) => ExitCode::from(3),
+        Err(e) => {
+            eprintln!("{e}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
 fn main() -> ExitCode {
     let args: Vec<_> = std::env::args_os().skip(1).collect();
     #[cfg(feature = "fixture-only")]
@@ -21,7 +98,7 @@ fn main() -> ExitCode {
     }
     if args == ["--help"] || args == ["help"] || args == ["-h"] {
         println!(
-            "OptiMac: Rust edition (reviewed cleanup available in the menu)\nUsage: optimac inspect <directory> | ui <directory>\nMetadata only; at most 100000 entries and 32 directory levels.\nLogical bytes are not reclaimable space. 30-second scan budget. Use local test directories.\nRead-only commands: analyze, duplicates, artifacts [directory]; clean [scan [--json] [--deep]] (inventory), apps (inventory), updates, login, space, doctor, optimize (diagnostics), status."
+            "OptiMac: Rust edition (reviewed cleanup available in the menu)\nUsage: optimac inspect <directory> | ui <directory>\nMetadata only; at most 100000 entries and 32 directory levels.\nLogical bytes are not reclaimable space. 30-second scan budget. Use local test directories.\nRead-only commands: analyze, duplicates, artifacts [directory]; clean [scan [--json] [--deep]] (inventory), clean plan, apps (inventory), updates, login, space, doctor, optimize (diagnostics), status.\nInteractive: clean apply PLAN-ID moves reviewed plan units to the OptiMac recovery folder (does not free disk space); recovery inspect ID|PLAN-ID."
         );
         return ExitCode::SUCCESS;
     }
@@ -103,12 +180,18 @@ fn main() -> ExitCode {
     if command == "recovery" {
         use std::io::{IsTerminal, Write};
         if args.len() == 3 && args[1] == "inspect" {
+            let id = args[2].to_str().unwrap_or("");
             let result = optimac::paths::AppPaths::from_env().and_then(|paths| {
-                optimac::recovery::purge::inspect(
-                    optimac::recovery::RecoveryPolicy::Production,
-                    paths.home(),
-                    args[2].to_str().unwrap_or(""),
-                )
+                if id.len() == 64 && id.bytes().all(|b| b.is_ascii_hexdigit()) {
+                    let clock = unix_now;
+                    optimac::cleanup::apply::inspect(&apply_env(&paths, &cancel, &clock), id)
+                } else {
+                    optimac::recovery::purge::inspect(
+                        optimac::recovery::RecoveryPolicy::Production,
+                        paths.home(),
+                        id,
+                    )
+                }
             });
             return match result {
                 Ok(s) => {
@@ -168,6 +251,9 @@ fn main() -> ExitCode {
     }
     if command == "clean" {
         let tail = &args[1..];
+        if tail.first().is_some_and(|arg| arg == "apply") {
+            return clean_apply(&tail[1..], &cancel);
+        }
         if tail.first().is_some_and(|arg| arg == "providers") {
             if tail.len() > 2 || (tail.len() == 2 && tail[1] != "--json") {
                 eprintln!("Usage: optimac clean providers [--json]");
