@@ -315,6 +315,8 @@ Check and use it with `optimac config check project-inventory.toml` and
 `optimac clean scan --config project-inventory.toml --by-category`. Results are
 metadata inventory only and do not certify any artifact for removal.
 
-### Focused fixture-only tests
+### Isolated tests
 
-Run `./scripts/test-safe.sh` (or `make test`) for the currently audited recovery and TUI tests. These commands build the library and CLI with the `fixture-only` feature. They do **not** run the full suite: fixture payload operations and broader filesystem isolation are still incomplete. Ordinary `cargo test --lib` can select production recovery authority and is not verified safe. CLI integration tests require `--features fixture-only`; arbitrary test code and externally launched programs are not sandboxed by this feature.
+Run `make test` on macOS for the full sandboxed suite. Cargo builds outside the sandbox; test processes receive a private HOME/TMPDIR/XDG environment and an OS profile denying writes outside their temporary tree and real-home content reads except compiled artifacts. A canary verifies denial and an outer metadata-only observer checks the real recovery directory before/after. No environment-only fallback is allowed.
+
+Four legacy recovery tests require production policy and are explicitly ignored in the normal fixture-only suite; run `make test-recovery-isolated` to execute them under the same OS sandbox. `make test-concurrent-isolated` checks independent process recovery locks. `make test-fast` retains the focused subset. Ordinary Cargo test execution bypasses this sandbox; use these make targets. Nested agent sandboxes may reject sandbox-exec, in which case run the target from a normal macOS terminal.

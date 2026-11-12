@@ -297,6 +297,14 @@ mod tests {
         assert!(context.lock().is_err());
         fs::remove_file(context.root.join(".lock")).unwrap();
         let lock = context.lock().unwrap();
+        let metadata = lock.metadata().unwrap();
+        println!(
+            "LOCK_PROOF {} {} {}",
+            context.root.display(),
+            metadata.dev(),
+            metadata.ino()
+        );
+        std::thread::sleep(std::time::Duration::from_millis(200));
         assert!(context.lock().is_err());
         assert_eq!(lock.metadata().unwrap().mode() & 0o777, 0o600);
         drop(lock);

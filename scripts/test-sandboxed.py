@@ -36,6 +36,7 @@ def run():
     parser.add_argument('--list-only', action='store_true')
     parser.add_argument('--canary-only', action='store_true')
     parser.add_argument('--recovery-only', action='store_true')
+    parser.add_argument('--lock-only', action='store_true')
     args = parser.parse_args()
     if sys.platform != 'darwin' or not Path(SANDBOX).is_file():
         raise RuntimeError('sandbox-exec is required; environment-only isolation is forbidden')
@@ -114,7 +115,7 @@ fn main() {
         try:
             for exe in executables:
                 try:
-                    output = isolated([str(exe), *(['--ignored'] if args.recovery_only else [])])
+                    output = isolated([str(exe), *(['--ignored'] if args.recovery_only else ['recovery_lock', '--nocapture'] if args.lock_only else [])])
                     print(output, flush=True)
                     summary = re.search(r'test result: ok\. (\d+) passed; \d+ failed; (\d+) ignored;', output)
                     if not summary:

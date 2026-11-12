@@ -32,3 +32,7 @@ test-fast:
 .PHONY: test-recovery-isolated
 test-recovery-isolated:
 	python3 scripts/test-sandboxed.py --recovery-only
+
+.PHONY: test-concurrent-isolated
+test-concurrent-isolated:
+	python3 scripts/test-concurrent.py
