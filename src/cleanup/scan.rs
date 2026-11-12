@@ -230,6 +230,25 @@ pub(super) fn measure_observed(
             );
             continue;
         }
+        // Inspect a final link without resolving it. Validate only its ancestors;
+        // neither statfs nor read_dir may be called on a link destination.
+        if let Some(parent) = path.parent()
+            && validate(parent).is_ok()
+            && let Ok(m) = fs::symlink_metadata(&path)
+            && m.is_symlink()
+        {
+            if crosses_device_boundary(device, m.dev()) {
+                r.reason("mount_boundary");
+                observe(&r, &path, Some(&m), Some("mount or device boundary"));
+            } else {
+                r.reason("symlink");
+                observe(&r, &path, Some(&m), Some("symlink not followed"));
+                logical = logical.saturating_add(m.len());
+                allocated = allocated.saturating_add(m.blocks().saturating_mul(512));
+            }
+            r.skipped += 1;
+            continue;
+        }
         // Recheck ancestors before each metadata operation; never open file contents.
         if let Err(error) = validate(&path) {
             r.reason(if error.to_string().contains("Symlink") {

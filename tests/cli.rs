@@ -409,7 +409,7 @@ fn immutable_plan_cli_show_list_json_and_nonempty_fixture() {
             .as_array()
             .unwrap()
             .iter()
-            .any(|e| e["reason"].as_str().unwrap().contains("Symlink"))
+            .any(|e| e["reason"].as_str().unwrap().contains("symlink"))
     }));
     assert!(providers.iter().any(|p| {
         p["excluded"]

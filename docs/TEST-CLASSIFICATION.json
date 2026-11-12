@@ -218,6 +218,11 @@
       "review": "passed_under_os_sandbox"
     },
     {
+      "name": "optimac:lib/cleanup::plan_builder::tests::app_bundle_internal_links_are_units_without_accessing_destinations",
+      "class": "fixture_fs",
+      "review": "passed_under_os_sandbox"
+    },
+    {
       "name": "optimac:lib/cleanup::plan_builder::tests::immutable_plan_builds_allowed_roots_and_preserves_fixture_tree",
       "class": "fixture_fs",
       "review": "passed_under_os_sandbox"

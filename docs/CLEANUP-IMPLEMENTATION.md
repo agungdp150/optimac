@@ -326,3 +326,9 @@ Added additive `skip_reasons` counts to provider JSON and readable reason counts
 ### Slice 1c: completeness from incomplete reasons
 
 Intentional symlink, hard-link, protected-name/configuration and special-file skips no longer make a scanned provider Partial. Budget/depth, mount, permission, vanished and I/O observations do. A disposable mode-000 directory verifies real permission denial remains Partial; the same fixture verifies intentional skips remain Complete and budget exhaustion remains Partial. Existing hard-link and symlink preservation assertions remain. All four make checks passed: 91 tests passed/4 ignored, isolated recovery 4 passed, security/release passed. Plan handling of internal links and cause-specific plan guidance remain next.
+
+### Slice 1c: internal link units and accounting
+
+Internal symlinks now reach the observer with no-follow link metadata after ancestor validation. No readlink, destination statfs, target sizing or traversal occurs. Directory plan units can contain these links; top-level links and symlinked ancestors are still refused. Unit allocated sizes include directory metadata and link blocks, and logical sizes include link lengths, not destination sizes. Hard-linked descendants still exclude the entire unit (known limit).
+
+The new app-bundle fixture contains five internal links (Current, relative framework links and an outside link to a mode-000 fixture directory). It scans Complete, reports five links, produces one directory target and matches independently measured no-follow metadata totals. No outside target path appears in the plan. Top-level-link and ancestor-refusal checks pass. All four make checks passed: 92 tests passed/4 ignored; isolated recovery 4 passed; security/release passed. Cause-specific plan messages are still pending.

@@ -91,6 +91,22 @@ impl Collector {
             .or_default()
             .entry(top.clone())
             .or_default();
+        if reason == Some("symlink not followed") && path != top {
+            if let Some(m) = meta {
+                // Link metadata only. No read_link, canonicalize or target access.
+                if m.uid() != unsafe { libc::geteuid() } {
+                    unit.excluded.push(Exclusion {
+                        path: path.into(),
+                        reason: "not owned by the current user".into(),
+                    });
+                }
+                unit.logical = unit.logical.saturating_add(m.len());
+                unit.allocated = unit
+                    .allocated
+                    .saturating_add(m.blocks().saturating_mul(512));
+            }
+            return;
+        }
         if let Some(reason) = reason {
             unit.excluded.push(Exclusion {
                 path: path.into(),
@@ -119,6 +135,8 @@ impl Collector {
         }
         if m.is_file() {
             unit.logical = unit.logical.saturating_add(m.len());
+        }
+        if m.is_file() || m.is_dir() {
             unit.allocated = unit
                 .allocated
                 .saturating_add(m.blocks().saturating_mul(512));
@@ -543,7 +561,7 @@ mod tests {
         .unwrap();
         let p = &p.plan.content.providers[0];
         assert!(p.targets.is_empty());
-        assert!(p.excluded.iter().any(|e| e.reason.contains("Symlink")));
+        assert!(p.excluded.iter().any(|e| e.reason.contains("symlink")));
         assert!(p.excluded.iter().any(|e| e.reason.contains("hard-linked")));
         assert_eq!(p.completeness, "complete");
         let uid = unsafe { libc::geteuid() };
@@ -570,6 +588,109 @@ mod tests {
         )
         .unwrap();
         assert!(p.plan.content.providers[0].targets.is_empty());
+        fs::remove_dir_all(home).unwrap();
+    }
+    #[test]
+    fn app_bundle_internal_links_are_units_without_accessing_destinations() {
+        use std::os::unix::fs::PermissionsExt;
+        let (home, _auth) = crate::fixture_paths::FixtureRoot::create_test_fixture().unwrap();
+        let root = home.join("Library/Caches/ms-playwright");
+        let unit = root.join("chromium-fixture");
+        let framework = unit.join("Chromium.app/Contents/Frameworks/Example.framework");
+        fs::create_dir_all(framework.join("Versions/A")).unwrap();
+        fs::write(framework.join("Versions/A/binary"), b"binary fixture").unwrap();
+        let outside = home.join("outside-never-read");
+        fs::create_dir(&outside).unwrap();
+        fs::write(outside.join("secret"), vec![0u8; 8192]).unwrap();
+        fs::set_permissions(&outside, fs::Permissions::from_mode(0o000)).unwrap();
+        for (target, path) in [
+            (PathBuf::from("A"), framework.join("Versions/Current")),
+            (
+                PathBuf::from("Versions/Current/Helpers"),
+                framework.join("Helpers"),
+            ),
+            (
+                PathBuf::from("Versions/Current/Libraries"),
+                framework.join("Libraries"),
+            ),
+            (
+                PathBuf::from("Versions/Current/Resources"),
+                framework.join("Resources"),
+            ),
+            (outside.clone(), framework.join("external")),
+        ] {
+            symlink(target, path).unwrap();
+        }
+        fn age_and_size(path: &Path) -> (u64, u64) {
+            let m = fs::symlink_metadata(path).unwrap();
+            let mut allocated = m.blocks() * 512;
+            let mut logical = if m.is_dir() { 0 } else { m.len() };
+            if m.is_dir() {
+                for entry in fs::read_dir(path).unwrap() {
+                    let (l, a) = age_and_size(&entry.unwrap().path());
+                    logical += l;
+                    allocated += a;
+                }
+            }
+            if !m.is_symlink() {
+                old(path);
+            }
+            (logical, allocated)
+        }
+        let (logical, allocated) = age_and_size(&unit);
+        let config =
+            Config::parse("schema_version=2\n[[rule]]\nid='playwright-browsers'\nenabled=true")
+                .unwrap();
+        let report = super::super::configured_inventory(
+            &home,
+            &AtomicBool::new(false),
+            Budget::quick(),
+            &config,
+        )
+        .unwrap();
+        let row = &report.providers[0];
+        assert_eq!(row.status, Status::Complete);
+        assert_eq!(row.skip_reasons["symlink"], 5);
+        assert!(row.note.contains("5 symlinks not followed"));
+        assert_eq!(row.logical_bytes, Some(logical));
+        let built = build(
+            &home,
+            Some(&config),
+            &[],
+            &AtomicBool::new(false),
+            Budget::quick(),
+            1_000_000,
+        )
+        .unwrap();
+        let p = &built.plan.content.providers[0];
+        assert_eq!(p.targets.len(), 1);
+        assert_eq!(p.targets[0].path, unit);
+        assert_eq!(p.targets[0].logical_bytes, logical);
+        assert_eq!(p.targets[0].allocated_bytes, allocated);
+        assert!(
+            !serde_json::to_string(&built.plan)
+                .unwrap()
+                .contains("outside-never-read")
+        );
+        symlink(&unit, root.join("top-link")).unwrap();
+        let built = build(
+            &home,
+            Some(&config),
+            &[],
+            &AtomicBool::new(false),
+            Budget::quick(),
+            1_000_000,
+        )
+        .unwrap();
+        assert_eq!(built.plan.content.providers[0].targets.len(), 1);
+        assert!(
+            built.plan.content.providers[0]
+                .excluded
+                .iter()
+                .any(|e| e.path.ends_with("top-link") && e.reason.contains("symlink"))
+        );
+        assert!(super::super::scan::validate(&root.join("top-link/Chromium.app")).is_err());
+        fs::set_permissions(&outside, fs::Permissions::from_mode(0o700)).unwrap();
         fs::remove_dir_all(home).unwrap();
     }
 }

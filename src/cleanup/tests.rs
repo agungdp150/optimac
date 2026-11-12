@@ -17,7 +17,14 @@ fn inventory_preserves_data_counts_hardlinks_once_and_excludes_apple() {
         .iter()
         .find(|r| r.provider == "app-user-caches/example")
         .unwrap();
-    assert_eq!(r.logical_bytes, Some(5));
+    assert_eq!(
+        r.logical_bytes,
+        Some(
+            5 + fs::symlink_metadata(home.join("Library/Caches/example/escape"))
+                .unwrap()
+                .len()
+        )
+    );
     assert_eq!(r.files, 1);
     assert!(r.skip_reasons.get("symlink").copied().unwrap_or(0) > 0);
     assert!(serde_json::to_value(r).unwrap()["skip_reasons"].is_object());
