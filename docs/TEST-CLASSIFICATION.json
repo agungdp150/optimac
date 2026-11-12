@@ -183,6 +183,21 @@
       "review": "absolute fixture script, cleared child environment, relative executable refused"
     },
     {
+      "name": "optimac:lib/cleanup::apply_validation::tests::apply_revalidation_allows_internal_links_but_refuses_unit_and_ancestor_links",
+      "class": "fixture_fs",
+      "review": "passed_under_os_sandbox"
+    },
+    {
+      "name": "optimac:lib/cleanup::apply_validation::tests::apply_revalidation_checks_age_hash_schema_and_scope_without_mutation",
+      "class": "fixture_fs",
+      "review": "passed_under_os_sandbox"
+    },
+    {
+      "name": "optimac:lib/cleanup::apply_validation::tests::apply_revalidation_refuses_new_descendants_hardlinks_and_partial_provider",
+      "class": "fixture_fs",
+      "review": "passed_under_os_sandbox"
+    },
+    {
       "name": "optimac:lib/cleanup::category::tests::browser_specific_mapping_partial_and_denied_trash",
       "class": "fixture_fs",
       "review": "passed_under_os_sandbox"
