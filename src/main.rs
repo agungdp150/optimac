@@ -98,7 +98,7 @@ fn main() -> ExitCode {
     }
     if args == ["--help"] || args == ["help"] || args == ["-h"] {
         println!(
-            "OptiMac: Rust edition (reviewed cleanup available in the menu)\nUsage: optimac inspect <directory> | ui <directory>\nMetadata only; at most 100000 entries and 32 directory levels.\nLogical bytes are not reclaimable space. 30-second scan budget. Use local test directories.\nRead-only commands: analyze, duplicates, artifacts [directory]; clean [scan [--json] [--deep]] (inventory), clean plan, apps (inventory), updates, login, space, doctor, optimize (diagnostics), status.\nInteractive: clean apply PLAN-ID moves reviewed plan units to the OptiMac recovery folder (does not free disk space); recovery inspect ID|PLAN-ID."
+            "OptiMac: Rust edition (reviewed cleanup available in the menu)\nUsage: optimac inspect <directory> | ui <directory>\nMetadata only; at most 100000 entries and 32 directory levels.\nLogical bytes are not reclaimable space. 30-second scan budget. Use local test directories.\nRead-only commands: analyze, duplicates, artifacts [directory]; clean [scan [--json] [--deep]] (inventory), clean plan, apps (inventory), updates, login, space, doctor, optimize (diagnostics), status.\nInteractive: clean apply PLAN-ID moves reviewed plan units to the OptiMac recovery folder (does not free disk space); recovery inspect ID|PLAN-ID; recovery restore ID; recovery purge ID (interactive, permanent)."
         );
         return ExitCode::SUCCESS;
     }
@@ -204,9 +204,28 @@ fn main() -> ExitCode {
                 }
             };
         }
+        if args.len() == 3 && args[1] == "restore" {
+            let result = optimac::paths::AppPaths::from_env().and_then(|paths| {
+                optimac::recovery::RecoveryContext::initialize(
+                    paths.home(),
+                    optimac::recovery::RecoveryPolicy::Production,
+                )?
+                .restore_command(None, args[2].to_str().unwrap_or(""))
+            });
+            return match result {
+                Ok(s) => {
+                    println!("{s}");
+                    ExitCode::SUCCESS
+                }
+                Err(e) => {
+                    eprintln!("{e}");
+                    ExitCode::FAILURE
+                }
+            };
+        }
         if args.len() != 3 || args[1] != "purge" {
             eprintln!(
-                "Usage: optimac recovery purge <id> | inspect <id|plan-id>; purge deletes plan directory-unit payloads only"
+                "Usage: optimac recovery purge <id> | restore <id> | inspect <id|plan-id>; purge and restore handle plan directory-unit records only"
             );
             return ExitCode::from(2);
         }

@@ -73,6 +73,11 @@
       "review": "passed_under_os_sandbox"
     },
     {
+      "name": "cli:test/recovery_restore_cli_uses_production_policy_only",
+      "class": "fixture_fs",
+      "review": "passed_under_os_sandbox"
+    },
+    {
       "name": "cli:test/retired_commands_explain_why",
       "class": "fixture_fs",
       "review": "passed_under_os_sandbox"
@@ -624,6 +629,11 @@
     },
     {
       "name": "optimac:lib/recovery::unit_purge::tests::purge_run_reports_results_and_never_touches_historical_records",
+      "class": "fixture_fs",
+      "review": "passed_under_os_sandbox"
+    },
+    {
+      "name": "optimac:lib/recovery::unit_purge::tests::restore_command_roundtrip_and_refusals",
       "class": "fixture_fs",
       "review": "passed_under_os_sandbox"
     }

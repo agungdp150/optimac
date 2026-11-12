@@ -670,3 +670,27 @@ fn recovery_purge_cli_is_interactive_only_and_changes_nothing() {
     assert_eq!(std::fs::read_dir(&home).unwrap().count(), 0);
     std::fs::remove_dir_all(home).unwrap();
 }
+
+#[test]
+fn recovery_restore_cli_uses_production_policy_only() {
+    let (home, _authorization) = authorized_home();
+    let output = fixture_cli()
+        .args(["recovery", "restore", "1"])
+        .env("HOME", &home)
+        .output()
+        .unwrap();
+    assert!(!output.status.success());
+    assert!(
+        String::from_utf8_lossy(&output.stderr)
+            .contains("production recovery authorization disabled in fixture-only build")
+    );
+    let usage = fixture_cli()
+        .args(["recovery", "restore"])
+        .env("HOME", &home)
+        .output()
+        .unwrap();
+    assert_eq!(usage.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&usage.stderr).contains("restore <id>"));
+    assert_eq!(std::fs::read_dir(&home).unwrap().count(), 0);
+    std::fs::remove_dir_all(home).unwrap();
+}

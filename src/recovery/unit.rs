@@ -376,6 +376,19 @@ impl RecoveryContext {
         ))
     }
 
+    /// `recovery restore <id>`: the existing directory-unit restore, with a
+    /// clear refusal for other record kinds.
+    pub fn restore_command(&self, authority: Option<&FixtureRoot>, id: &str) -> io::Result<String> {
+        let _lock = self.lock()?;
+        let directory = self.open_record_dir(id)?;
+        match read_record_at(&directory)? {
+            StoredRecord::Unit(_) => self.restore_directory_unit_locked(authority, id),
+            StoredRecord::V1(_) => Err(error(&format!(
+                "Recovery {id} is a version-1 record; recovery restore handles plan directory-unit records only. Use the Restore recovered items menu. Nothing changed."
+            ))),
+        }
+    }
+
     /// Read-only description of a directory-unit record. Nothing is replayed.
     pub fn inspect_directory_unit(&self, id: &str) -> io::Result<String> {
         let _lock = self.lock()?;

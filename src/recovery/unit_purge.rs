@@ -1523,4 +1523,51 @@ pub(super) mod tests {
         assert!(out.contains("This continues an earlier purge of the same payload"));
         assert!(result.unwrap().completed);
     }
+
+    #[test]
+    fn restore_command_roundtrip_and_refusals() {
+        let s = Setup::new();
+        let unit = bundle(&s.home, &s.outside.join("profile"), "chromium-1248");
+        let before = metadata(&unit);
+        let r = record(&unit);
+        let lock = s.context.lock().unwrap();
+        s.context
+            .move_directory_unit(&lock, Some(&s.cap), "100", &r)
+            .unwrap();
+        drop(lock);
+        assert!(!unit.exists());
+        let restored = s.context.restore_command(Some(&s.cap), "100").unwrap();
+        println!("RESTORE_COMMAND {restored}");
+        assert!(restored.starts_with("Restored ") && restored.ends_with("; journal retained"));
+        assert_eq!(
+            metadata(&unit)
+                .into_iter()
+                .map(|m| (m.0, m.1, m.2, m.3))
+                .collect::<Vec<_>>(),
+            before
+                .into_iter()
+                .map(|m| (m.0, m.1, m.2, m.3))
+                .collect::<Vec<_>>()
+        );
+        assert!(inspect(&s, "100").contains("State: restored"));
+        assert!(s.context.restore_command(Some(&s.cap), "100").is_err());
+        assert!(s.context.restore_command(None, "100").is_err());
+        let historical = s.historical(3);
+        let history = metadata(&s.root().join(&historical[1]));
+        let err = s
+            .context
+            .restore_command(Some(&s.cap), &historical[1])
+            .unwrap_err();
+        assert!(err.to_string().contains("version-1 record"), "{err}");
+        assert_eq!(metadata(&s.root().join(&historical[1])), history);
+        s.moved("firefox-1", "200", Faults::default()).unwrap();
+        assert!(
+            s.context
+                .purge_directory_unit(Some(&s.cap), "200", &mut idle())
+                .unwrap()
+                .completed
+        );
+        let err = s.context.restore_command(Some(&s.cap), "200").unwrap_err();
+        assert!(err.to_string().contains("purge was started"), "{err}");
+    }
 }
