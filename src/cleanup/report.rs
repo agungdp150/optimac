@@ -31,6 +31,7 @@ pub struct Inventory {
     pub read_only: bool,
     pub providers: Vec<ProviderReport>,
     pub available_bytes: Option<u64>,
+    pub home_used_bytes: Option<u64>,
     pub complete: bool,
     pub notes: Vec<String>,
     pub capabilities: Vec<super::Capability>,
@@ -116,6 +117,25 @@ impl Inventory {
                 .map(crate::format_size)
                 .unwrap_or_else(|| "unknown".into())
         );
+        let estimate = self
+            .home_used_bytes
+            .and_then(|used| used.checked_sub(summary["allocated_bytes"].as_u64().unwrap()));
+        text.push_str(&format!("Unaccounted space estimate (home volume used minus measured allocated): {}. Not a reclaimable-space estimate.\n", estimate.map(crate::format_size).unwrap_or_else(|| "unavailable".into())));
+        text.push_str("Not covered:\n- Purgeable space is not quantified.\n- Time Machine local snapshots are not inventoried.\n- Other volumes are not covered.\n");
+        if self
+            .providers
+            .iter()
+            .any(|r| r.status == Status::Denied || r.errors > 0)
+        {
+            text.push_str("- Denied or partially inaccessible content has unknown size.\n");
+        }
+        if self
+            .providers
+            .iter()
+            .any(|r| r.provider == "local-trash" && (r.status == Status::Denied || r.errors > 0))
+        {
+            text.push_str("- Trash size is unknown and may be large.\n");
+        }
         text.push_str(
             "Downloads and Documents are not scanned unless explicitly scoped in configuration.\n",
         );

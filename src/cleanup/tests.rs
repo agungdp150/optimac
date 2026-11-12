@@ -478,6 +478,7 @@ fn summary_sorts_and_marks_incomplete_totals() {
         read_only: true,
         providers: rows,
         available_bytes: Some(50),
+        home_used_bytes: Some(1000),
         complete: false,
         notes: vec!["fixture safety".into()],
         capabilities: vec![],
@@ -490,6 +491,13 @@ fn summary_sorts_and_marks_incomplete_totals() {
     assert!(report.render_options(true, true).contains("item-00"));
     assert!(report.render_options(true, true).contains("fixture safety"));
     assert_eq!(report.summary()["allocated_bytes"], 190);
+    assert!(
+        compact.contains(
+            "Unaccounted space estimate (home volume used minus measured allocated): 810 B"
+        )
+    );
+    assert!(compact.contains("- Purgeable space is not quantified."));
+    assert!(compact.contains("- Time Machine local snapshots are not inventoried."));
 }
 
 #[test]

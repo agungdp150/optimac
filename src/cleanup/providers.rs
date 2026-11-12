@@ -252,7 +252,7 @@ pub fn inventory_with_progress(
     let complete = reports
         .iter()
         .all(|r| matches!(r.status, Status::Complete | Status::Absent));
-    Ok(Inventory { schema_version:1,read_only:true,providers:reports,available_bytes:available(home),complete,
+    Ok(Inventory { schema_version:1,read_only:true,providers:reports,available_bytes:available(home),home_used_bytes:super::accounting::used(home),complete,
         capabilities:catalog(), notes:vec!["Inventory only. No cleanup targets selected; no files moved or deleted.".into(),
         "Pip discovery may run a fixed candidate; other tool configuration discovery remains limited to environment and default hints.".into(),
         "Apple-owned generic cache directories are excluded. Allocated bytes exclude directory metadata and may share APFS extents; neither size is guaranteed reclaimable.".into(),
@@ -489,7 +489,7 @@ pub fn configured_inventory_with_progress(
     let complete = reports
         .iter()
         .all(|r| matches!(r.status, Status::Complete | Status::Absent));
-    Ok(Inventory {schema_version:1,read_only:true,providers:reports,available_bytes:available(home),complete,capabilities:catalog(), notes:vec![
+    Ok(Inventory {schema_version:1,read_only:true,providers:reports,available_bytes:available(home),home_used_bytes:super::accounting::used(home),complete,capabilities:catalog(), notes:vec![
         "Configured read-only inventory. Enabled rules only; no operations execute.".into(),
         "Global and per-rule exclusions applied before traversal. Unsupported providers are reported as blocked.".into(),
         "Custom file/project scopes report metadata totals, not duplicate detection or artifact eligibility. Sizes are not reclaimable-space estimates.".into(),
