@@ -66,20 +66,21 @@ impl ActivityCheck for ProcessActivity {
     }
     fn coverage(&self) -> Option<String> {
         let (others, protected, dead) = self.last?;
-        let mut note = String::from("Activity check: your processes were inspected");
+        let mut note = if protected > 0 {
+            format!(
+                "Activity check: inspected your processes except {protected} macOS system services in SIP-protected locations, which refuse inspection"
+            )
+        } else {
+            "Activity check: inspected all of your processes".to_string()
+        };
         if dead > 0 {
             note.push_str(&format!(
-                "; {dead} of their open descriptors refer to revoked or unmounted files that cannot belong to a unit"
-            ));
-        }
-        if protected > 0 {
-            note.push_str(&format!(
-                "; {protected} of them are macOS system services in SIP-protected locations that refuse inspection and were not checked"
+                "; {dead} open descriptors point to revoked or unmounted files, which cannot belong to a unit"
             ));
         }
         if others > 0 {
             note.push_str(&format!(
-                "; {others} processes owned by other users (system services) need administrator rights to inspect and were not checked"
+                "; {others} processes owned by other users (system services) need administrator rights and were not checked"
             ));
         }
         note.push('.');
