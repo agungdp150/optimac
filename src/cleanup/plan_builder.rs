@@ -206,6 +206,44 @@ fn selection(config: Option<&Config>, selected: &[String]) -> io::Result<Config>
     Config::parse(&toml::to_string(&value).map_err(io::Error::other)?)
 }
 
+fn incomplete_message(row: &ProviderReport, deep: bool) -> String {
+    let budget = row.skip_reasons.get("budget").copied().unwrap_or(0) > 0
+        || row.note.to_ascii_lowercase().contains("budget reached");
+    let mut reasons = Vec::new();
+    if budget {
+        reasons.push(if deep {
+            "scan hit its budget even with --deep".to_owned()
+        } else {
+            "scan hit its budget; run with --deep".to_owned()
+        });
+    }
+    for (key, label) in [
+        ("permission_denied", "permission denied"),
+        ("io_error", "I/O error"),
+        ("vanished", "vanished while scanning"),
+        ("mount_boundary", "mount boundary hit"),
+        ("depth_limit", "directory depth limit reached"),
+    ] {
+        if row.skip_reasons.get(key).copied().unwrap_or(0) > 0 {
+            reasons.push(label.into());
+        }
+    }
+    if reasons.is_empty() {
+        reasons.push(
+            match row.status {
+                Status::Denied => "permission denied",
+                Status::Absent => "root absent",
+                Status::Cancelled => "scan cancelled",
+                Status::Blocked => "root blocked by validation",
+                Status::Unsupported | Status::Guidance => "provider discovery unsupported",
+                _ => "incomplete inventory; see scan details",
+            }
+            .into(),
+        );
+    }
+    format!("not plannable: {}", reasons.join("; "))
+}
+
 pub struct BuiltPlan {
     pub plan: StoredPlan,
     pub scan_roots: Vec<PathBuf>,
@@ -288,13 +326,15 @@ pub fn build(
             excluded: vec![],
         };
         let unverified = id == "npm" || row.note.to_ascii_lowercase().contains("not verified");
+        let incomplete = incomplete_message(row, budget.entries > Budget::quick().entries);
         let problem =
             if !ALLOWED.contains(&id) || class != "rebuildable_cache" || risk == "protected" {
                 Some("provider class/risk is not eligible for v1 planning")
-            } else if row.status == Status::Partial || row.note.contains("Budget reached") {
-                Some("not plannable: incomplete scan, run with --deep")
-            } else if row.status != Status::Complete || row.allocated_bytes.is_none() {
-                Some("not plannable: missing, denied, blocked or unsupported inventory")
+            } else if row.status != Status::Complete
+                || row.allocated_bytes.is_none()
+                || row.note.contains("Budget reached")
+            {
+                Some(incomplete.as_str())
             } else if unverified && !selected.iter().any(|s| s == id) {
                 Some("default, not verified: name this provider with --provider")
             } else if !row.root.starts_with(home) || row.root == home {
@@ -690,6 +730,29 @@ mod tests {
                 .any(|e| e.path.ends_with("top-link") && e.reason.contains("symlink"))
         );
         assert!(super::super::scan::validate(&root.join("top-link/Chromium.app")).is_err());
+        let ancestor_config = Config::parse("schema_version=2\n[[rule]]\nid='playwright-browsers'\nenabled=true\nscan_roots=['~/Library/Caches/ms-playwright/top-link/Chromium.app']").unwrap();
+        let refused = build(
+            &home,
+            Some(&ancestor_config),
+            &[],
+            &AtomicBool::new(false),
+            Budget::quick(),
+            1_000_000,
+        )
+        .unwrap();
+        assert!(
+            refused
+                .plan
+                .content
+                .providers
+                .iter()
+                .all(|p| p.targets.is_empty())
+        );
+        assert!(refused.plan.content.providers.iter().any(|p| {
+            p.excluded
+                .iter()
+                .any(|e| e.reason.contains("Symlink ancestor"))
+        }));
         fs::set_permissions(&outside, fs::Permissions::from_mode(0o700)).unwrap();
         fs::remove_dir_all(home).unwrap();
     }

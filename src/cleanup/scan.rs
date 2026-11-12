@@ -294,6 +294,16 @@ pub(super) fn measure_observed(
                 Ok(i) => stack.push(i),
                 Err(error) => {
                     r.reason(error_reason(&error));
+                    observe(
+                        &r,
+                        &path,
+                        None,
+                        Some(match error.kind() {
+                            io::ErrorKind::PermissionDenied => "permission denied",
+                            io::ErrorKind::NotFound => "vanished while scanning",
+                            _ => "I/O error",
+                        }),
+                    );
                     r.errors += 1;
                 }
             }
@@ -358,5 +368,17 @@ mod mount_tests {
     fn device_boundary_comparison_does_not_authorize_crossing() {
         assert!(crosses_device_boundary(17, 18));
         assert!(!crosses_device_boundary(17, 17));
+        assert_eq!(
+            error_reason(&io::Error::from(io::ErrorKind::PermissionDenied)),
+            "permission_denied"
+        );
+        assert_eq!(
+            error_reason(&io::Error::from(io::ErrorKind::NotFound)),
+            "vanished"
+        );
+        assert_eq!(
+            error_reason(&io::Error::other("fixture failure")),
+            "io_error"
+        );
     }
 }

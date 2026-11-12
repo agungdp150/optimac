@@ -448,7 +448,7 @@ fn immutable_plan_cli_show_list_json_and_nonempty_fixture() {
     let text = String::from_utf8(text.stdout).unwrap();
     assert!(text.contains("This plan changes nothing."));
     assert!(text.contains("lower bound"));
-    assert!(text.contains("incomplete scan, run with --deep"));
+    assert!(text.contains("scan hit its budget; run with --deep"));
     let refused = fixture_cli()
         .args(["clean", "plan", "--provider", "local-trash"])
         .env("HOME", &home)
@@ -478,5 +478,131 @@ fn immutable_plan_cli_show_list_json_and_nonempty_fixture() {
     )
     .replace(home.to_str().unwrap(), "<fixture>");
     std::io::stdout().write_all(example.as_bytes()).unwrap();
+    std::fs::remove_dir_all(home).unwrap();
+}
+
+#[test]
+fn plan_internal_links_and_denied_provider_have_honest_cli_messages() {
+    use std::{
+        io::Write,
+        os::unix::fs::{PermissionsExt, symlink},
+        time::{Duration, SystemTime},
+    };
+    let (home, _authorization) = authorized_home();
+    let root = home.join("Library/Caches/ms-playwright");
+    let unit = root.join("chromium-fixture");
+    let framework = unit.join("Chromium.app/Frameworks/Example.framework");
+    std::fs::create_dir_all(framework.join("Versions/A")).unwrap();
+    std::fs::write(framework.join("Versions/A/binary"), vec![0u8; 4096]).unwrap();
+    let outside = home.join("outside");
+    std::fs::create_dir(&outside).unwrap();
+    std::fs::write(outside.join("must-not-be-measured"), vec![0u8; 16384]).unwrap();
+    std::fs::set_permissions(&outside, std::fs::Permissions::from_mode(0o000)).unwrap();
+    for (target, name) in [
+        ("A", "Versions/Current"),
+        ("Versions/Current/Helpers", "Helpers"),
+        ("Versions/Current/Libraries", "Libraries"),
+        ("Versions/Current/Resources", "Resources"),
+    ] {
+        symlink(target, framework.join(name)).unwrap();
+    }
+    symlink(&outside, framework.join("external")).unwrap();
+    fn age(path: &std::path::Path) {
+        let m = std::fs::symlink_metadata(path).unwrap();
+        if m.is_symlink() {
+            return;
+        }
+        if m.is_dir() {
+            for e in std::fs::read_dir(path).unwrap() {
+                age(&e.unwrap().path());
+            }
+        }
+        std::fs::File::open(path)
+            .unwrap()
+            .set_times(
+                std::fs::FileTimes::new()
+                    .set_modified(SystemTime::UNIX_EPOCH + Duration::from_secs(10)),
+            )
+            .unwrap();
+    }
+    age(&unit);
+    let denied = home.join("Library/Caches/Cypress/denied");
+    std::fs::create_dir_all(&denied).unwrap();
+    std::fs::write(denied.join("data"), b"unreadable fixture").unwrap();
+    std::fs::set_permissions(&denied, std::fs::Permissions::from_mode(0o000)).unwrap();
+    let config = home.join("rules.toml");
+    std::fs::write(&config,"schema_version=2\n[[rule]]\nid='playwright-browsers'\nenabled=true\n[[rule]]\nid='cypress-browsers'\nenabled=true").unwrap();
+    let invoke = |args: &[&str]| {
+        fixture_cli()
+            .args(args)
+            .arg("--config")
+            .arg(&config)
+            .env("HOME", &home)
+            .output()
+            .unwrap()
+    };
+    let scan = invoke(&["clean", "scan", "--json"]);
+    // Partial scan retains its existing nonzero status while still emitting JSON.
+    let scan_json: serde_json::Value = serde_json::from_slice(&scan.stdout).unwrap();
+    let rows = scan_json["providers"].as_array().unwrap();
+    let browser = rows
+        .iter()
+        .find(|r| r["provider"] == "playwright-browsers")
+        .unwrap();
+    assert_eq!(browser["status"], "complete");
+    assert_eq!(browser["skipped"], 5);
+    assert_eq!(browser["skip_reasons"]["symlink"], 5);
+    let denied_row = rows
+        .iter()
+        .find(|r| r["provider"] == "cypress-browsers")
+        .unwrap();
+    assert_eq!(denied_row["status"], "partial");
+    assert_eq!(denied_row["skip_reasons"]["permission_denied"], 1);
+    let plan = invoke(&["clean", "plan", "--deep", "--json"]);
+    assert!(
+        plan.status.success(),
+        "{}",
+        String::from_utf8_lossy(&plan.stderr)
+    );
+    let json: serde_json::Value = serde_json::from_slice(&plan.stdout).unwrap();
+    let providers = json["content"]["providers"].as_array().unwrap();
+    assert_eq!(
+        providers
+            .iter()
+            .map(|p| p["targets"].as_array().unwrap().len())
+            .sum::<usize>(),
+        1
+    );
+    assert_eq!(
+        providers
+            .iter()
+            .find(|p| p["provider"] == "playwright-browsers")
+            .unwrap()["targets"][0]["path"],
+        unit.to_str().unwrap()
+    );
+    assert!(!String::from_utf8_lossy(&plan.stdout).contains("must-not-be-measured"));
+    let text = invoke(&["clean", "plan", "--deep"]);
+    assert!(text.status.success());
+    let text = String::from_utf8(text.stdout).unwrap();
+    assert!(text.contains("not plannable: permission denied"));
+    assert!(!text.contains("run with --deep"));
+    let scan_text = String::from_utf8(invoke(&["clean", "scan", "--all"]).stdout).unwrap();
+    let rows = scan_text
+        .lines()
+        .filter(|l| l.starts_with("playwright-browsers —") || l.starts_with("cypress-browsers —"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let output = format!("\nSLICE 1C FIXTURE SCAN ROWS\n{rows}\nSLICE 1C FIXTURE PLAN\n{text}\n")
+        .replace(home.to_str().unwrap(), "<fixture>");
+    std::io::stdout().write_all(output.as_bytes()).unwrap();
+    // Both budget modes are tested through the actual command parser.
+    std::fs::write(&config,"schema_version=2\n[scan]\nquick_max_entries_per_provider=1\ndeep_max_entries_per_provider=1\n[[rule]]\nid='playwright-browsers'\nenabled=true").unwrap();
+    let quick = String::from_utf8(invoke(&["clean", "plan"]).stdout).unwrap();
+    assert!(quick.contains("scan hit its budget; run with --deep"));
+    let deep = String::from_utf8(invoke(&["clean", "plan", "--deep"]).stdout).unwrap();
+    assert!(deep.contains("scan hit its budget even with --deep"));
+    assert!(!deep.contains("run with --deep"));
+    std::fs::set_permissions(&outside, std::fs::Permissions::from_mode(0o700)).unwrap();
+    std::fs::set_permissions(&denied, std::fs::Permissions::from_mode(0o700)).unwrap();
     std::fs::remove_dir_all(home).unwrap();
 }
