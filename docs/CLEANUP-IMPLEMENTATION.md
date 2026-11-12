@@ -101,3 +101,7 @@ Added an in-memory schema serialization round-trip test and malformed/duplicate 
 Pip/Go read-only inventory will use fixed absolute candidates, reject final symlinks and files or ancestors writable by other users, prefer explicit environment settings and use bounded subprocesses with a neutral directory and explicit environment. Full executable trust enrollment is deferred until before Step 3 enables new deletion operations. The lightweight checks do not establish authenticity. Implementation and fixture tests are pending.
 
 The pip/Go command resolver is **not yet implemented**. Existing scans still use environment/default metadata hints and do not report tool probe status. Before adding probes, isolate tests from actual installed tools, validate every returned root and provide explicit unsupported/failed outcomes. The new inventory policy changes no runtime behavior or mutation authorization.
+
+### Pip resolver work in progress
+
+Added a test-only candidate permission-check prototype and a disposable fixture for symlink and writable-parent refusal. It is not connected to scans and does not run pip. Pip root command resolution, per-tool statuses and the remaining requested fixture cases are still unimplemented; the previous environment/default behavior remains in use. Go is unchanged.
