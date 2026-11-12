@@ -4,7 +4,7 @@ build:
 	cargo build --release --locked
 	mkdir -p bin
 	cp target/release/$(BINARY) bin/$(BINARY)
-test:
+test: test-classification
 	cargo fmt --check
 	./scripts/test-safe.sh
 	cargo clippy --locked --features fixture-only --all-targets -- -D warnings
@@ -20,3 +20,7 @@ install: build
 	install bin/$(BINARY) "$(HOME)/.local/bin/$(BINARY)"
 rust-build: build
 rust-test: test
+
+.PHONY: test-classification
+test-classification:
+	python3 scripts/check-test-classification.py
