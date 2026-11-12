@@ -20,11 +20,15 @@ impl PurgePlan {
         )
     }
 }
-fn checked_payload(home: &Path, id: &str) -> io::Result<(PathBuf, fs::Metadata)> {
+fn checked_payload(
+    policy: RecoveryPolicy<'_>,
+    home: &Path,
+    id: &str,
+) -> io::Result<(PathBuf, fs::Metadata)> {
     if id.is_empty() || !id.chars().all(|c| c.is_ascii_digit() || c == '-') {
         return Err(error("Invalid recovery ID"));
     }
-    let root = recovery_root(home)?;
+    let root = recovery_root(policy, home)?;
     let dir = root.join(id);
     validate_chain(&dir)?;
     let dm = fs::metadata(&dir)?;
@@ -60,8 +64,8 @@ fn checked_payload(home: &Path, id: &str) -> io::Result<(PathBuf, fs::Metadata)>
     }
     Ok((dir, m))
 }
-pub fn plan(home: &Path, id: &str) -> io::Result<PurgePlan> {
-    let (_, m) = checked_payload(home, id)?;
+pub fn plan(policy: RecoveryPolicy<'_>, home: &Path, id: &str) -> io::Result<PurgePlan> {
+    let (_, m) = checked_payload(policy, home, id)?;
     Ok(PurgePlan {
         id: id.into(),
         device: m.dev(),
@@ -72,7 +76,12 @@ pub fn plan(home: &Path, id: &str) -> io::Result<PurgePlan> {
         created: std::time::Instant::now(),
     })
 }
-pub fn execute(home: &Path, plan: &PurgePlan, cancel: &AtomicBool) -> io::Result<String> {
+pub fn execute(
+    policy: RecoveryPolicy<'_>,
+    home: &Path,
+    plan: &PurgePlan,
+    cancel: &AtomicBool,
+) -> io::Result<String> {
     use std::os::fd::AsRawFd;
     if unsafe { libc::geteuid() } == 0 {
         return Err(error("Do not purge as root"));
@@ -81,9 +90,9 @@ pub fn execute(home: &Path, plan: &PurgePlan, cancel: &AtomicBool) -> io::Result
     {
         return Err(error("Cancelled or expired plan"));
     }
-    let root = recovery_root(home)?;
+    let root = recovery_root(policy, home)?;
     let _lock = operation_lock(&root)?;
-    let (dir, m) = checked_payload(home, &plan.id)?;
+    let (dir, m) = checked_payload(policy, home, &plan.id)?;
     if (m.dev(), m.ino(), m.len(), m.mtime(), m.mtime_nsec())
         != (
             plan.device,
@@ -178,11 +187,11 @@ fn open_child(dir: &fs::File, name: &std::ffi::CStr, flags: i32) -> io::Result<f
 }
 
 /// Read-only reconciliation: never retries deletion or changes the journal.
-pub fn inspect(home: &Path, id: &str) -> io::Result<String> {
+pub fn inspect(policy: RecoveryPolicy<'_>, home: &Path, id: &str) -> io::Result<String> {
     if id.is_empty() || !id.chars().all(|c| c.is_ascii_digit() || c == '-') {
         return Err(error("Invalid recovery ID"));
     }
-    let root = recovery_root(home)?;
+    let root = recovery_root(policy, home)?;
     let _lock = operation_lock(&root)?;
     let dir = fs_ops::open_dir(&root.join(id))?;
     let probe = |name: &std::ffi::CStr| -> io::Result<bool> {
@@ -247,6 +256,7 @@ mod tests {
         };
         let cancel = AtomicBool::new(false);
         super::super::execute(
+            RecoveryPolicy::Production,
             &home,
             &Plan {
                 items: vec![candidate],
@@ -257,27 +267,35 @@ mod tests {
         .unwrap();
         let ids = recovery_ids(&home);
         assert_eq!(ids.len(), 1);
-        assert!(inspect(&home, &ids[0]).unwrap().contains("payload_present"));
-        let stale = plan(&home, &ids[0]).unwrap();
+        assert!(
+            inspect(RecoveryPolicy::Production, &home, &ids[0])
+                .unwrap()
+                .contains("payload_present")
+        );
+        let stale = plan(RecoveryPolicy::Production, &home, &ids[0]).unwrap();
         let payload = home
             .join(".optimac-rust-recovery")
             .join(&ids[0])
             .join("payload");
         fs::write(&payload, b"changed fixture").unwrap();
-        assert!(execute(&home, &stale, &cancel).is_err());
+        assert!(execute(RecoveryPolicy::Production, &home, &stale, &cancel).is_err());
         assert_eq!(fs::read(&payload).unwrap(), b"changed fixture");
-        let p = plan(&home, &ids[0]).unwrap();
+        let p = plan(RecoveryPolicy::Production, &home, &ids[0]).unwrap();
         let cancelled = AtomicBool::new(true);
-        assert!(execute(&home, &p, &cancelled).is_err());
+        assert!(execute(RecoveryPolicy::Production, &home, &p, &cancelled).is_err());
         assert!(payload.exists());
         assert!(
-            execute(&home, &p, &cancel)
+            execute(RecoveryPolicy::Production, &home, &p, &cancel)
                 .unwrap()
                 .contains("Permanently removed")
         );
-        assert!(inspect(&home, &ids[0]).unwrap().contains("purge_completed"));
+        assert!(
+            inspect(RecoveryPolicy::Production, &home, &ids[0])
+                .unwrap()
+                .contains("purge_completed")
+        );
         assert!(recovery_ids(&home).is_empty());
-        assert!(execute(&home, &p, &cancel).is_err());
+        assert!(execute(RecoveryPolicy::Production, &home, &p, &cancel).is_err());
         assert!(
             home.join(".optimac-rust-recovery")
                 .join(&ids[0])
@@ -287,12 +305,50 @@ mod tests {
         let record_dir = home.join(".optimac-rust-recovery").join(&ids[0]);
         fs::remove_file(record_dir.join("purge-completed")).unwrap();
         assert!(
-            inspect(&home, &ids[0])
+            inspect(RecoveryPolicy::Production, &home, &ids[0])
                 .unwrap()
                 .contains("needs_reconciliation")
         );
         fs::write(record_dir.join("purge-intent.json"), b"invalid").unwrap();
-        assert!(inspect(&home, &ids[0]).is_err());
+        assert!(inspect(RecoveryPolicy::Production, &home, &ids[0]).is_err());
         fs::remove_dir_all(home).unwrap();
+    }
+}
+
+#[cfg(test)]
+mod authorization_tests {
+    use super::*;
+    #[test]
+    fn fixture_recovery_purge_execute_rejects_before_metadata_writes() {
+        let home = std::env::temp_dir().canonicalize().unwrap().join(format!(
+            "optimac-purge-authority-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        use std::os::unix::fs::DirBuilderExt;
+        fs::DirBuilder::new().mode(0o700).create(&home).unwrap();
+        let cap = crate::fixture_paths::FixtureRoot::open(&home).unwrap();
+        let plan = PurgePlan {
+            id: "123".into(),
+            device: 0,
+            inode: 0,
+            size: 0,
+            modified: 0,
+            modified_ns: 0,
+            created: std::time::Instant::now(),
+        };
+        for policy in [
+            RecoveryPolicy::Fixture(None),
+            RecoveryPolicy::Fixture(Some(&cap)),
+        ] {
+            let err = execute(policy, &home, &plan, &AtomicBool::new(false)).unwrap_err();
+            assert!(err.to_string().contains("fixture"));
+            assert_eq!(fs::read_dir(&home).unwrap().count(), 0);
+        }
+        drop(cap);
+        fs::remove_dir(home).unwrap();
     }
 }

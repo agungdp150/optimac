@@ -7,9 +7,33 @@ use std::{
     os::fd::{AsRawFd, FromRawFd},
 };
 
+#[derive(Clone, Copy)]
 pub enum RecoveryPolicy<'a> {
     Production,
     Fixture(Option<&'a FixtureRoot>),
+}
+
+impl RecoveryPolicy<'_> {
+    fn check_build(self) -> io::Result<()> {
+        match self {
+            Self::Production if cfg!(feature = "fixture-only") => Err(error(
+                "production recovery authorization disabled in fixture-only build",
+            )),
+            Self::Fixture(None) => Err(error("fixture authorization required")),
+            _ => Ok(()),
+        }
+    }
+
+    /// Payload and path-based reconciliation are not fixture-authorized yet.
+    pub(super) fn require_payload_authority(self) -> io::Result<()> {
+        self.check_build()?;
+        match self {
+            Self::Production => Ok(()),
+            Self::Fixture(_) => Err(error(
+                "fixture payload/reconciliation authorization not implemented",
+            )),
+        }
+    }
 }
 
 pub struct RecoveryContext {
@@ -20,6 +44,7 @@ pub struct RecoveryContext {
 
 impl RecoveryContext {
     pub fn initialize(home: &Path, policy: RecoveryPolicy<'_>) -> io::Result<Self> {
+        policy.check_build()?;
         let (root, directory, fixture) = match policy {
             RecoveryPolicy::Production => {
                 let root = production_recovery_root(home)?;
@@ -227,9 +252,23 @@ mod tests {
     }
 
     #[test]
+    #[cfg(not(feature = "fixture-only"))]
     fn recovery_journal_production_context_preserves_format_and_validation() {
         // Production policy tested only against a disposable home.
         let fixture = Fixture::new();
+        let empty = Plan {
+            items: vec![],
+            notes: vec![],
+        };
+        assert!(
+            execute(
+                RecoveryPolicy::Production,
+                &fixture.0,
+                &empty,
+                &AtomicBool::new(false)
+            )
+            .is_ok()
+        );
         let context = RecoveryContext::initialize(&fixture.0, RecoveryPolicy::Production).unwrap();
         assert!(!context.is_fixture());
         let _lock = context.lock().unwrap();
@@ -241,5 +280,46 @@ mod tests {
         assert_eq!(record.candidate.size, 42);
         fs::set_permissions(&context.root, fs::Permissions::from_mode(0o755)).unwrap();
         assert!(RecoveryContext::initialize(&fixture.0, RecoveryPolicy::Production).is_err());
+    }
+    #[test]
+    fn fixture_recovery_entry_points_fail_closed_without_payload_authority() {
+        let fixture = Fixture::new();
+        let cap = FixtureRoot::open(&fixture.0).unwrap();
+        let plan = Plan {
+            items: vec![],
+            notes: vec![],
+        };
+        let cancel = AtomicBool::new(false);
+        for policy in [
+            RecoveryPolicy::Fixture(None),
+            RecoveryPolicy::Fixture(Some(&cap)),
+        ] {
+            assert!(execute(policy, &fixture.0, &plan, &cancel).is_err());
+            assert!(restore(policy, &fixture.0, "123").is_err());
+            assert!(purge::plan(policy, &fixture.0, "123").is_err());
+            assert!(purge::inspect(policy, &fixture.0, "123").is_err());
+            assert_eq!(fs::read_dir(&fixture.0).unwrap().count(), 0);
+        }
+        let context =
+            RecoveryContext::initialize(&fixture.0, RecoveryPolicy::Fixture(Some(&cap))).unwrap();
+        let _lock = context.lock().unwrap();
+        context.create_journal("123", &fixture.candidate()).unwrap();
+    }
+
+    #[test]
+    #[cfg(feature = "fixture-only")]
+    fn fixture_recovery_build_refuses_explicit_production_policy() {
+        let fixture = Fixture::new();
+        let policy = RecoveryPolicy::Production;
+        let plan = Plan {
+            items: vec![],
+            notes: vec![],
+        };
+        assert!(RecoveryContext::initialize(&fixture.0, policy).is_err());
+        assert!(execute(policy, &fixture.0, &plan, &AtomicBool::new(false)).is_err());
+        assert!(restore(policy, &fixture.0, "123").is_err());
+        assert!(purge::plan(policy, &fixture.0, "123").is_err());
+        assert!(purge::inspect(policy, &fixture.0, "123").is_err());
+        assert_eq!(fs::read_dir(&fixture.0).unwrap().count(), 0);
     }
 }

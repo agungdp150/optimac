@@ -230,3 +230,30 @@ fn fixture_paths_are_used_by_cli_history() {
     assert!(!paths.recovery().exists());
     std::fs::remove_dir(fixture).unwrap();
 }
+
+/// This must exercise a separately compiled binary, not cfg(test) in the library.
+#[cfg(feature = "fixture-only")]
+#[test]
+fn fixture_recovery_cli_cannot_select_production_policy() {
+    let root = std::env::temp_dir().canonicalize().unwrap().join(format!(
+        "optimac-cli-auth-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ));
+    std::fs::create_dir(&root).unwrap();
+    let output = Command::new(env!("CARGO_BIN_EXE_optimac"))
+        .env("HOME", &root)
+        .args(["recovery", "inspect", "123"])
+        .output()
+        .unwrap();
+    assert!(!output.status.success());
+    assert!(
+        String::from_utf8_lossy(&output.stderr)
+            .contains("production recovery authorization disabled in fixture-only build")
+    );
+    assert_eq!(std::fs::read_dir(&root).unwrap().count(), 0);
+    std::fs::remove_dir(root).unwrap();
+}

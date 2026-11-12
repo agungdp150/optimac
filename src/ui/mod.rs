@@ -100,6 +100,7 @@ enum Screen {
 struct App {
     inventory_config: Option<optimac::cleanup::config::Config>,
     home_path: PathBuf,
+    recovery_policy: optimac::recovery::RecoveryPolicy<'static>,
     selected: Action,
     home_cursor: usize,
     submenu_cursor: usize,
@@ -131,12 +132,14 @@ struct App {
 impl App {
     #[cfg(not(test))]
     fn new(root: PathBuf) -> Self {
-        Self::with_home(
+        let mut app = Self::with_home(
             root,
             optimac::paths::AppPaths::from_env()
                 .map(|p| p.home().to_path_buf())
                 .unwrap_or_default(),
-        )
+        );
+        app.recovery_policy = optimac::recovery::RecoveryPolicy::Production;
+        app
     }
     #[cfg(test)]
     fn new(root: PathBuf) -> Self {
@@ -145,6 +148,7 @@ impl App {
     fn with_home(root: PathBuf, home_path: PathBuf) -> Self {
         Self {
             home_path,
+            recovery_policy: optimac::recovery::RecoveryPolicy::Fixture(None),
             inventory_config: None,
             selected: Action::Inspect,
             home_cursor: 0,
@@ -395,13 +399,18 @@ impl App {
                     let cancel = self.cancel.clone();
                     *output.lock().unwrap() =
                         "Moving selected items… c cancels between moves".into();
+                    let policy = self.recovery_policy;
                     self.job = Some(std::thread::spawn(move || {
                         let result = if let Some(id) = restore {
-                            optimac::recovery::restore(&home, &id)
+                            optimac::recovery::restore(policy, &home, &id)
                         } else if let Some(plan) = plan {
-                            optimac::recovery::execute_with_progress(&home, &plan, &cancel, |p| {
-                                *progress.lock().unwrap() = Some(p.clone())
-                            })
+                            optimac::recovery::execute_with_progress(
+                                policy,
+                                &home,
+                                &plan,
+                                &cancel,
+                                |p| *progress.lock().unwrap() = Some(p.clone()),
+                            )
                         } else {
                             Err(io::Error::other("No reviewed plan"))
                         };

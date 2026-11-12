@@ -9,6 +9,10 @@ lto = true
 codegen-units = 1
 strip = true
 
+# Compile both library and CLI without production recovery authority for fixture tests.
+[features]
+fixture-only = []
+
 [dependencies]
 ratatui = "0.30"
 crossterm = "0.29"

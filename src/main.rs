@@ -99,7 +99,11 @@ fn main() -> ExitCode {
         use std::io::{IsTerminal, Write};
         if args.len() == 3 && args[1] == "inspect" {
             let result = optimac::paths::AppPaths::from_env().and_then(|paths| {
-                optimac::recovery::purge::inspect(paths.home(), args[2].to_str().unwrap_or(""))
+                optimac::recovery::purge::inspect(
+                    optimac::recovery::RecoveryPolicy::Production,
+                    paths.home(),
+                    args[2].to_str().unwrap_or(""),
+                )
             });
             return match result {
                 Ok(s) => {
@@ -126,7 +130,11 @@ fn main() -> ExitCode {
             let id = args[2]
                 .to_str()
                 .ok_or_else(|| std::io::Error::other("Invalid ID"))?;
-            let plan = optimac::recovery::purge::plan(home, id)?;
+            let plan = optimac::recovery::purge::plan(
+                optimac::recovery::RecoveryPolicy::Production,
+                home,
+                id,
+            )?;
             println!("{}", plan.describe());
             print!("Type DELETE {id} to confirm, or Enter to cancel: ");
             std::io::stdout().flush()?;
@@ -135,7 +143,12 @@ fn main() -> ExitCode {
             if answer.trim() != format!("DELETE {id}") {
                 return Ok("Cancelled; no data changed".into());
             }
-            optimac::recovery::purge::execute(home, &plan, &cancel)
+            optimac::recovery::purge::execute(
+                optimac::recovery::RecoveryPolicy::Production,
+                home,
+                &plan,
+                &cancel,
+            )
         })();
         return match result {
             Ok(s) => {

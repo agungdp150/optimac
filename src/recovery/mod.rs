@@ -353,8 +353,9 @@ fn production_recovery_root(home: &Path) -> io::Result<PathBuf> {
     Ok(p)
 }
 
-fn recovery_root(home: &Path) -> io::Result<PathBuf> {
-    Ok(RecoveryContext::initialize(home, RecoveryPolicy::Production)?.root)
+fn recovery_root(policy: RecoveryPolicy<'_>, home: &Path) -> io::Result<PathBuf> {
+    policy.require_payload_authority()?;
+    Ok(RecoveryContext::initialize(home, policy)?.root)
 }
 
 #[derive(Clone, Debug, Default)]
@@ -366,15 +367,22 @@ pub struct CleanupProgress {
     pub current: Option<PathBuf>,
 }
 
-pub fn execute(home: &Path, plan: &Plan, cancel: &AtomicBool) -> io::Result<String> {
-    execute_with_progress(home, plan, cancel, |_| {})
+pub fn execute(
+    policy: RecoveryPolicy<'_>,
+    home: &Path,
+    plan: &Plan,
+    cancel: &AtomicBool,
+) -> io::Result<String> {
+    execute_with_progress(policy, home, plan, cancel, |_| {})
 }
 pub fn execute_with_progress(
+    policy: RecoveryPolicy<'_>,
     home: &Path,
     plan: &Plan,
     cancel: &AtomicBool,
     mut update: impl FnMut(&CleanupProgress),
 ) -> io::Result<String> {
+    policy.require_payload_authority()?;
     let mut progress = CleanupProgress {
         total: plan.items.len(),
         ..CleanupProgress::default()
@@ -383,7 +391,7 @@ pub fn execute_with_progress(
     if unsafe { libc::geteuid() } == 0 {
         return Err(error("Do not run cleanup as root"));
     }
-    let context = RecoveryContext::initialize(home, RecoveryPolicy::Production)?;
+    let context = RecoveryContext::initialize(home, policy)?;
     let root = &context.root;
     let _lock = context.lock()?;
     let mut report = String::new();
@@ -495,14 +503,14 @@ pub fn history(home: &Path) -> io::Result<String> {
     }
     Ok(s)
 }
-pub fn restore(home: &Path, id: &str) -> io::Result<String> {
+pub fn restore(policy: RecoveryPolicy<'_>, home: &Path, id: &str) -> io::Result<String> {
     if id.is_empty() || !id.chars().all(|c| c.is_ascii_digit() || c == '-') {
         return Err(error("Invalid recovery ID"));
     }
     if unsafe { libc::geteuid() } == 0 {
         return Err(error("Do not restore as root"));
     }
-    let root = recovery_root(home)?;
+    let root = recovery_root(policy, home)?;
     let _lock = operation_lock(&root)?;
     let dir = root.join(id);
     validate_chain(&dir)?;
@@ -565,7 +573,7 @@ mod tests {
         );
         assert_eq!(selected.items.len(), 1);
         assert!(
-            execute(&root, &selected, &cancel)
+            execute(RecoveryPolicy::Production, &root, &selected, &cancel)
                 .unwrap()
                 .contains("Moved")
         );
@@ -573,7 +581,7 @@ mod tests {
         assert_eq!(fs::read(docs.join(".env")).unwrap(), b"sensitive");
         let ids = recovery_ids(&root);
         assert_eq!(ids.len(), 1);
-        restore(&root, &ids[0]).unwrap();
+        restore(RecoveryPolicy::Production, &root, &ids[0]).unwrap();
         assert_eq!(fs::read(docs.join("selected.pdf")).unwrap(), b"selected");
         fs::remove_dir_all(root).unwrap();
     }
@@ -621,11 +629,17 @@ mod tests {
         fs::create_dir_all(app.join("Contents")).unwrap();
         fs::write(app.join("Contents/Info.plist"), b"fixture").unwrap();
         let plan = app_plan(&root, &app).unwrap();
-        let report = execute(&root, &plan, &AtomicBool::new(false)).unwrap();
+        let report = execute(
+            RecoveryPolicy::Production,
+            &root,
+            &plan,
+            &AtomicBool::new(false),
+        )
+        .unwrap();
         assert!(report.contains("Moved"), "{report}");
         let ids = recovery_ids(&root);
         assert_eq!(ids.len(), 1);
-        restore(&root, &ids[0]).unwrap();
+        restore(RecoveryPolicy::Production, &root, &ids[0]).unwrap();
         assert_eq!(
             fs::read(app.join("Contents/Info.plist")).unwrap(),
             b"fixture"
@@ -634,8 +648,13 @@ mod tests {
         stale.items[0].ino = 0;
         let mut events = Vec::new();
         assert!(
-            execute_with_progress(&root, &stale, &AtomicBool::new(false), |p| events
-                .push(p.clone()))
+            execute_with_progress(
+                RecoveryPolicy::Production,
+                &root,
+                &stale,
+                &AtomicBool::new(false),
+                |p| events.push(p.clone())
+            )
             .unwrap()
             .contains("Skipped")
         );
@@ -658,7 +677,7 @@ mod tests {
         std::os::unix::fs::symlink(&root, cache.join("loop")).unwrap();
         let plan = preview(&root, &AtomicBool::new(false)).unwrap();
         assert!(plan.items.is_empty());
-        assert!(restore(&root, "../outside").is_err());
+        assert!(restore(RecoveryPolicy::Production, &root, "../outside").is_err());
         fs::remove_dir_all(root).unwrap();
     }
     #[test]
@@ -687,9 +706,13 @@ mod tests {
             notes: vec![],
         };
         let mut events = Vec::new();
-        let result = execute_with_progress(&root, &plan, &AtomicBool::new(false), |p| {
-            events.push(p.clone())
-        })
+        let result = execute_with_progress(
+            RecoveryPolicy::Production,
+            &root,
+            &plan,
+            &AtomicBool::new(false),
+            |p| events.push(p.clone()),
+        )
         .unwrap();
         assert_eq!(events.first().unwrap().total, 1);
         assert_eq!(events.last().unwrap().processed, 1);
@@ -705,10 +728,10 @@ mod tests {
             .to_string_lossy()
             .into_owned();
         fs::write(&p, b"new").unwrap();
-        assert!(restore(&root, &id).is_err());
+        assert!(restore(RecoveryPolicy::Production, &root, &id).is_err());
         assert_eq!(fs::read(&p).unwrap(), b"new");
         fs::remove_file(&p).unwrap();
-        restore(&root, &id).unwrap();
+        restore(RecoveryPolicy::Production, &root, &id).unwrap();
         assert_eq!(fs::read(&p).unwrap(), b"keep");
         fs::remove_dir_all(root).unwrap();
     }
