@@ -49,15 +49,12 @@ pub(super) fn move_exclusive(_source: &Path, _target: &Path) -> io::Result<()> {
     Err(error("Recovery mutation is macOS-only"))
 }
 pub(super) fn operation_lock(root: &Path) -> io::Result<File> {
+    lock_at(&open_dir(root)?)
+}
+
+pub(super) fn lock_at(root: &File) -> io::Result<File> {
     use std::os::fd::AsRawFd;
-    let file = OpenOptions::new()
-        .read(true)
-        .write(true)
-        .create(true)
-        .truncate(false)
-        .mode(0o600)
-        .custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC)
-        .open(root.join(".lock"))?;
+    let file = super::context::open_child(root, ".lock", libc::O_RDWR | libc::O_CREAT)?;
     let m = file.metadata()?;
     if !m.is_file() || m.nlink() != 1 || m.uid() != unsafe { libc::geteuid() } {
         return Err(error("Unsafe recovery lock"));

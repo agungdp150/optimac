@@ -1,6 +1,8 @@
+mod context;
 #[path = "fs.rs"]
 mod fs_ops;
 pub mod purge;
+pub use context::{RecoveryContext, RecoveryPolicy};
 use fs_ops::{move_exclusive, operation_lock, sync_dir};
 // Conservative, journaled, same-volume cache cleanup. Never permanently deletes.
 use serde::{Deserialize, Serialize};
@@ -330,12 +332,12 @@ pub fn initialize_fixture_recovery(
     home: &Path,
     authorization: Option<&crate::fixture_paths::FixtureRoot>,
 ) -> io::Result<std::fs::File> {
-    authorization
-        .ok_or_else(|| error("fixture authorization required"))?
-        .initialize_recovery(home)
+    RecoveryContext::initialize(home, RecoveryPolicy::Fixture(authorization))?
+        .directory
+        .try_clone()
 }
 
-fn recovery_root(home: &Path) -> io::Result<PathBuf> {
+fn production_recovery_root(home: &Path) -> io::Result<PathBuf> {
     let p = crate::paths::AppPaths::from_home(Some(home.as_os_str().to_owned()))?.recovery();
     if !p.exists() {
         fs::DirBuilder::new().create(&p)?;
@@ -349,6 +351,10 @@ fn recovery_root(home: &Path) -> io::Result<PathBuf> {
         ));
     }
     Ok(p)
+}
+
+fn recovery_root(home: &Path) -> io::Result<PathBuf> {
+    Ok(RecoveryContext::initialize(home, RecoveryPolicy::Production)?.root)
 }
 
 #[derive(Clone, Debug, Default)]
@@ -377,8 +383,9 @@ pub fn execute_with_progress(
     if unsafe { libc::geteuid() } == 0 {
         return Err(error("Do not run cleanup as root"));
     }
-    let root = recovery_root(home)?;
-    let _lock = operation_lock(&root)?;
+    let context = RecoveryContext::initialize(home, RecoveryPolicy::Production)?;
+    let root = &context.root;
+    let _lock = context.lock()?;
     let mut report = String::new();
     for (i, c) in plan.items.iter().enumerate() {
         if cancel.load(Ordering::Relaxed) {
@@ -436,20 +443,7 @@ pub fn execute_with_progress(
             std::process::id()
         );
         let dir = root.join(&id);
-        fs::create_dir(&dir)?;
-        fs::set_permissions(&dir, fs::Permissions::from_mode(0o700))?;
-        let mut file = OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .mode(0o600)
-            .open(dir.join("record.json"))?;
-        file.write_all(&serde_json::to_vec(&Record {
-            version: 1,
-            candidate: c.clone(),
-        })?)?;
-        file.sync_all()?;
-        sync_dir(&dir)?;
-        sync_dir(&root)?;
+        let _journal_dir = context.create_journal(&id, c)?;
         validate_candidate(home, c)?;
         match move_exclusive(&c.path, &dir.join("payload")) {
             Ok(()) => {
