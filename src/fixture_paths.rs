@@ -83,6 +83,38 @@ impl FixtureRoot {
             path: path.to_path_buf(),
         })
     }
+    pub(crate) fn fixture_identity(&self) -> io::Result<(u64, u64)> {
+        let meta = self.root.metadata()?;
+        Ok((meta.dev(), meta.ino()))
+    }
+
+    pub(crate) fn source_parent(&self, path: &Path) -> io::Result<(File, std::ffi::CString)> {
+        let relative = path
+            .strip_prefix(&self.path)
+            .map_err(|_| io::Error::other("outside fixture"))?;
+        if relative
+            .components()
+            .any(|part| !matches!(part, Component::Normal(_)))
+        {
+            return Err(io::Error::other("invalid source component"));
+        }
+        let parent = path
+            .parent()
+            .ok_or_else(|| io::Error::other("missing parent"))?;
+        let directory = if parent == self.path {
+            self.root.try_clone()?
+        } else {
+            self.open_existing(parent)?
+        };
+        if !directory.metadata()?.is_dir() {
+            return Err(io::Error::other("source parent is not directory"));
+        }
+        let name = path
+            .file_name()
+            .ok_or_else(|| io::Error::other("missing filename"))?;
+        Ok((directory, std::ffi::CString::new(name.as_bytes())?))
+    }
+
     /// Create only the recovery directory beneath this already-open fixture.
     /// The returned descriptor, rather than the original path, pins the result.
     pub(crate) fn initialize_recovery(&self, home: &Path) -> io::Result<File> {

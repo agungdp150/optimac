@@ -90,3 +90,31 @@ pub(super) fn open_dir(path: &Path) -> io::Result<File> {
     }
     Ok(dir)
 }
+
+/// No path lookup outside the already-authorized fixture directory descriptors.
+#[cfg(target_os = "macos")]
+pub(super) fn fixture_move_at(
+    source: &File,
+    name: &std::ffi::CStr,
+    destination: &File,
+) -> io::Result<()> {
+    use std::os::fd::AsRawFd;
+    let rc = unsafe {
+        libc::renameatx_np(
+            source.as_raw_fd(),
+            name.as_ptr(),
+            destination.as_raw_fd(),
+            c"payload".as_ptr(),
+            libc::RENAME_EXCL,
+        )
+    };
+    if rc == 0 {
+        Ok(())
+    } else {
+        Err(io::Error::last_os_error())
+    }
+}
+#[cfg(not(target_os = "macos"))]
+pub(super) fn fixture_move_at(_: &File, _: &std::ffi::CStr, _: &File) -> io::Result<()> {
+    Err(error("Fixture recovery mutation is macOS-only"))
+}
