@@ -38,11 +38,8 @@ mod tests {
     use super::*;
     #[test]
     fn injected_paths_resolve_consistently_and_missing_home_fails_closed() {
-        let fixture = std::env::temp_dir()
-            .canonicalize()
-            .unwrap()
-            .join(format!("optimac-path-context-{}", std::process::id()));
-        std::fs::create_dir(&fixture).unwrap();
+        let (fixture, _authority) =
+            crate::fixture_paths::FixtureRoot::create_test_fixture().unwrap();
         let paths = AppPaths::from_home(Some(fixture.as_os_str().to_owned())).unwrap();
         assert_eq!(paths.home(), fixture);
         assert_eq!(paths.recovery(), fixture.join(".optimac-rust-recovery"));

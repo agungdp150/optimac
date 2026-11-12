@@ -539,8 +539,7 @@ mod tests {
     }
     #[test]
     fn byte_comparison_is_exact_and_cancellable() {
-        let d = std::env::temp_dir().join(format!("optimac-compare-{}", std::process::id()));
-        fs::create_dir(&d).unwrap();
+        let (d, _authority) = crate::fixture_paths::FixtureRoot::create_test_fixture().unwrap();
         let a = d.join("a");
         let b = d.join("b");
         fs::write(&a, b"abc").unwrap();

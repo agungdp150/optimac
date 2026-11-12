@@ -115,6 +115,30 @@ impl FixtureRoot {
         Ok((directory, std::ffi::CString::new(name.as_bytes())?))
     }
 
+    /// Create an isolated test fixture beneath a fixed OS temporary root.
+    #[cfg(any(test, feature = "fixture-only"))]
+    pub fn create_test_fixture() -> io::Result<(PathBuf, Self)> {
+        use std::os::unix::fs::DirBuilderExt;
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static NEXT: AtomicU64 = AtomicU64::new(0);
+        #[cfg(target_os = "macos")]
+        let base = Path::new("/private/tmp");
+        #[cfg(not(target_os = "macos"))]
+        let base = Path::new("/tmp");
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(io::Error::other)?
+            .as_nanos();
+        let path = base.join(format!(
+            "optimac-test-{}-{nonce}-{}",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::Relaxed)
+        ));
+        std::fs::DirBuilder::new().mode(0o700).create(&path)?;
+        let authority = Self::open(&path)?;
+        Ok((path, authority))
+    }
+
     /// Create only the recovery directory beneath this already-open fixture.
     /// The returned descriptor, rather than the original path, pins the result.
     pub(crate) fn initialize_recovery(&self, home: &Path) -> io::Result<File> {

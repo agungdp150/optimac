@@ -151,9 +151,9 @@ fn cleanup_requires_explicit_confirmation() {
 }
 #[test]
 fn menu_navigation_and_background_actions() {
-    let root = std::env::temp_dir().join(format!("optimac-ui-{}", std::process::id()));
-    std::fs::create_dir_all(&root).unwrap();
-    let mut app = App::new(root.clone());
+    let (root, _authority) = optimac::fixture_paths::FixtureRoot::create_test_fixture().unwrap();
+    let paths = optimac::paths::AppPaths::from_home(Some(root.as_os_str().to_owned())).unwrap();
+    let mut app = App::with_home(root.clone(), paths.home().to_path_buf());
     app.screen = Screen::Menu;
     app.home_action = HomeAction::Analyze;
     app.submenu_cursor = 0;
@@ -257,11 +257,8 @@ fn status_refresh_keeps_previous_values_and_does_not_overlap() {
 
 #[test]
 fn configured_inventory_runs_in_menu_without_default_roots() {
-    let fixture_home = std::env::temp_dir()
-        .canonicalize()
-        .unwrap()
-        .join(format!("optimac-ui-home-{}", std::process::id()));
-    std::fs::create_dir(&fixture_home).unwrap();
+    let (fixture_home, _authority) =
+        optimac::fixture_paths::FixtureRoot::create_test_fixture().unwrap();
     let mut app = App::with_home(fixture_home.clone(), fixture_home.clone());
     app.inventory_config =
         Some(optimac::cleanup::config::Config::parse("schema_version=2").unwrap());

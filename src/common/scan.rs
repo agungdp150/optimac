@@ -137,8 +137,7 @@ mod tests {
     use super::*;
     #[test]
     fn counts_metadata_without_following_links_and_honors_limits() {
-        let root = std::env::temp_dir().join(format!("optimac-rust-test-{}", std::process::id()));
-        fs::create_dir(&root).unwrap();
+        let (root, _authority) = crate::fixture_paths::FixtureRoot::create_test_fixture().unwrap();
         fs::write(root.join("file"), b"hello").unwrap();
         #[cfg(unix)]
         std::os::unix::fs::symlink(&root, root.join("loop")).unwrap();
