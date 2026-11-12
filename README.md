@@ -320,3 +320,19 @@ metadata inventory only and do not certify any artifact for removal.
 Run `make test` on macOS for the full sandboxed suite. Cargo builds outside the sandbox; test processes receive a private HOME/TMPDIR/XDG environment and an OS profile denying writes outside their temporary tree and real-home content reads except compiled artifacts. A canary verifies denial and an outer metadata-only observer checks the real recovery directory before/after. No environment-only fallback is allowed.
 
 Four legacy recovery tests require production policy and are explicitly ignored in the normal fixture-only suite; run `make test-recovery-isolated` to execute them under the same OS sandbox. `make test-concurrent-isolated` checks independent process recovery locks. `make test-fast` retains the focused subset. Ordinary Cargo test execution bypasses this sandbox; use these make targets. Nested agent sandboxes may reject sandbox-exec, in which case run the target from a normal macOS terminal.
+
+### Read-only cleanup plans
+
+Start with one provider:
+
+```sh
+optimac clean plan --provider playwright-browsers
+optimac clean plan --list
+optimac clean plan --show PLAN_ID
+```
+
+`--provider` is repeatable; `--deep`, `--config PATH` and `--json` are supported when creating a plan. `--show PLAN_ID --json` and `--list --json` read stored plans without scanning. Plans are stored under `~/Library/Application Support/OptiMac/plans` with private permissions. Plan creation writes only its app-data plan file and any missing app-data directories; candidate files stay unchanged. Existing plans cannot be overwritten.
+
+The plan records whole top-level entries and excludes recently modified files (24 hours), symlinks, hard links, other owners, protected paths, mount crossings and incomplete providers. A configured exclusion inside a directory excludes that entire target unit. Provider selection cannot bypass a disabled configuration rule. Target sizes are estimates, never guaranteed space freed. **Apply and permanent cleanup are not implemented by this slice.**
+
+The narrow allow-list does not certify every provider: pnpm discovery remains unsupported; generic browser rows remain excluded as unknown content; npm uses the existing fixed default and requires explicit `--provider npm`. Existing same-device mount/firmlink detection limits remain. A saved plan is a metadata snapshot, not permission to delete.

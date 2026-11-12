@@ -210,6 +210,32 @@ pub fn build(
             }
         }
     }
+    // Check every existing ancestor below home before the inventory walk. This
+    // catches cross-device roots as well as descendants; same-device firmlinks
+    // remain a limit of the existing filesystem guard.
+    let home_device = fs::symlink_metadata(home)?.dev();
+    for job in config.jobs(home, None, None)? {
+        for root in job.roots {
+            let mut current = home.to_path_buf();
+            for part in root
+                .strip_prefix(home)
+                .map_err(io::Error::other)?
+                .components()
+            {
+                current.push(part);
+                match fs::symlink_metadata(&current) {
+                    Ok(m) if m.is_symlink() => break, // inventory reports the refusal
+                    Ok(m) if m.dev() != home_device => {
+                        return Err(io::Error::other(
+                            "Plan root crosses a mount or device boundary",
+                        ));
+                    }
+                    Ok(_) => {}
+                    Err(_) => break, // inventory retains absent/denied status
+                }
+            }
+        }
+    }
     let mut collector = Collector::default();
     let inventory = super::providers::configured_inventory_observed(
         home,
@@ -271,7 +297,11 @@ pub fn build(
         if let Some(problem) = problem {
             p.excluded.push(Exclusion {
                 path: row.root.clone(),
-                reason: format!("{problem}; {}", row.note),
+                reason: if row.note.is_empty() {
+                    problem.into()
+                } else {
+                    format!("{problem}; {}", row.note)
+                },
             });
         }
         let mut eligible = problem.is_none();
@@ -294,7 +324,11 @@ pub fn build(
                 if let Some(mut target) = unit.target {
                     // Metadata-only plans remain snapshots, never future mutation authority.
                     match fs::symlink_metadata(&path) {
-                        Ok(m) if !m.is_symlink() && identity(&path, &m) == target => {
+                        Ok(m)
+                            if !m.is_symlink()
+                                && (m.is_dir() || m.nlink() == 1)
+                                && identity(&path, &m) == target =>
+                        {
                             target.logical_bytes = unit.logical;
                             target.allocated_bytes = unit.allocated;
                             p.targets.push(target);
@@ -476,6 +510,25 @@ mod tests {
                 .excluded
                 .iter()
                 .any(|e| e.reason.contains("configuration"))
+        );
+        fs::create_dir(root.join("version/.ssh")).unwrap();
+        fs::write(root.join("version/.ssh/secret"), b"fixture protected data").unwrap();
+        old(&root.join("version"));
+        let protected = build(
+            &home,
+            None,
+            &["playwright-browsers".into()],
+            &AtomicBool::new(false),
+            Budget::quick(),
+            1_000_000,
+        )
+        .unwrap();
+        assert!(protected.plan.content.providers[0].targets.is_empty());
+        assert!(
+            protected.plan.content.providers[0]
+                .excluded
+                .iter()
+                .any(|e| e.path.ends_with(".ssh") && e.reason.contains("protected"))
         );
         symlink(home.join("outside"), root.join("link")).unwrap();
         fs::hard_link(root.join("version/file"), root.join("hard")).unwrap();

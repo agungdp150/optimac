@@ -290,14 +290,22 @@ fn fixture_recovery_cli_cannot_select_production_policy() {
 #[test]
 fn clean_plan_cli_respects_config_exclusions_and_keeps_files_unchanged() {
     let (home, _authorization) = authorized_home();
-    let keep = home.join("files/keep");
-    let excluded = home.join("files/private");
+    let keep = home.join("Library/Caches/ms-playwright/keep");
+    let excluded = home.join("Library/Caches/ms-playwright/private");
     std::fs::create_dir_all(&keep).unwrap();
     std::fs::create_dir_all(&excluded).unwrap();
     std::fs::write(keep.join("item"), b"keep").unwrap();
     std::fs::write(excluded.join("secret"), b"unchanged").unwrap();
+    for path in [keep.join("item"), keep.clone()] {
+        std::fs::File::open(path)
+            .unwrap()
+            .set_times(std::fs::FileTimes::new().set_modified(
+                std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(10),
+            ))
+            .unwrap();
+    }
     let config = home.join("rules.toml");
-    std::fs::write(&config, "schema_version = 2\n[scope]\nfile_roots = ['~/files']\nexclude_paths = ['~/files/private']\n[[rule]]\nid = 'large-old-files'\nenabled = true\nscope = 'files'\n").unwrap();
+    std::fs::write(&config, "schema_version = 2\n[scope]\nexclude_paths = ['~/Library/Caches/ms-playwright/private']\n[[rule]]\nid = 'playwright-browsers'\nenabled = true\n").unwrap();
     let output = fixture_cli()
         .args(["clean", "plan", "--json", "--config"])
         .arg(&config)
@@ -311,13 +319,13 @@ fn clean_plan_cli_respects_config_exclusions_and_keeps_files_unchanged() {
     );
     let json: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
     assert_eq!(json["read_only"], true);
-    assert_eq!(json["actionable_allocated_bytes"], 0);
+    assert_eq!(json["estimated_logical_bytes"], 4);
     assert!(
-        json["entries"]
+        json["content"]["providers"]
             .as_array()
             .unwrap()
             .iter()
-            .any(|e| e["provider"] == "large-old-files")
+            .any(|e| e["provider"] == "playwright-browsers")
     );
     let text = fixture_cli()
         .args(["clean", "plan", "--config"])
@@ -327,17 +335,17 @@ fn clean_plan_cli_respects_config_exclusions_and_keeps_files_unchanged() {
         .unwrap();
     assert!(text.status.success());
     let text = String::from_utf8(text.stdout).unwrap();
-    assert!(text.contains("Read-only cleanup proposal"));
+    assert!(text.contains("Read-only cleanup plan"));
     assert!(text.contains("not guaranteed disk space freed"));
-    assert!(text.contains("large-old-files"));
-    let entry = json["entries"]
+    assert!(text.contains("playwright-browsers"));
+    let entry = json["content"]["providers"]
         .as_array()
         .unwrap()
         .iter()
-        .find(|e| e["provider"] == "large-old-files")
+        .find(|e| e["provider"] == "playwright-browsers")
         .unwrap();
     assert_eq!(
-        entry["logical_bytes"], 4,
+        entry["targets"][0]["logical_bytes"], 4,
         "excluded files must not contribute"
     );
     assert_eq!(std::fs::read(keep.join("item")).unwrap(), b"keep");
@@ -345,5 +353,130 @@ fn clean_plan_cli_respects_config_exclusions_and_keeps_files_unchanged() {
         std::fs::read(excluded.join("secret")).unwrap(),
         b"unchanged"
     );
+    std::fs::remove_dir_all(home).unwrap();
+}
+
+#[test]
+fn immutable_plan_cli_show_list_json_and_nonempty_fixture() {
+    use std::{
+        io::Write,
+        os::unix::fs::symlink,
+        time::{Duration, SystemTime},
+    };
+    let (home, _authorization) = authorized_home();
+    let playwright = home.join("Library/Caches/ms-playwright");
+    let cypress = home.join("Library/Caches/Cypress");
+    let cargo = home.join(".cargo/registry/cache");
+    for root in [&playwright, &cypress, &cargo] {
+        std::fs::create_dir_all(root).unwrap();
+    }
+    std::fs::write(playwright.join("old"), vec![b'x'; 4096]).unwrap();
+    std::fs::File::open(playwright.join("old"))
+        .unwrap()
+        .set_times(
+            std::fs::FileTimes::new()
+                .set_modified(SystemTime::UNIX_EPOCH + Duration::from_secs(10)),
+        )
+        .unwrap();
+    std::fs::write(playwright.join("recent"), b"recent").unwrap();
+    symlink(home.join("outside"), cypress.join("link")).unwrap();
+    for n in 0..4 {
+        std::fs::write(cargo.join(format!("entry-{n}")), b"fixture").unwrap();
+    }
+    let config = home.join("rules.toml");
+    std::fs::write(&config,"schema_version=2\n[scan]\nquick_max_entries_per_provider=3\n[[rule]]\nid='playwright-browsers'\nenabled=true\n[[rule]]\nid='cypress-browsers'\nenabled=true\n[[rule]]\nid='cargo-registry'\nenabled=true\n").unwrap();
+    let output = fixture_cli()
+        .args(["clean", "plan", "--json", "--config"])
+        .arg(&config)
+        .env("HOME", &home)
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let json: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(json["read_only"], true);
+    assert_eq!(json["lower_bound"], true);
+    assert_eq!(json["estimated_logical_bytes"], 4096);
+    let providers = json["content"]["providers"].as_array().unwrap();
+    assert!(providers.iter().any(|p| p["provider"] == "cargo-registry"
+        && p["completeness"] == "partial"
+        && p["targets"].as_array().unwrap().is_empty()));
+    assert!(providers.iter().any(|p| {
+        p["excluded"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|e| e["reason"].as_str().unwrap().contains("Symlink"))
+    }));
+    assert!(providers.iter().any(|p| {
+        p["excluded"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|e| e["reason"].as_str().unwrap().contains("24 hours"))
+    }));
+    let id = json["plan_id"].as_str().unwrap();
+    let shown = fixture_cli()
+        .args(["clean", "plan", "--show", id, "--json"])
+        .env("HOME", &home)
+        .output()
+        .unwrap();
+    assert!(shown.status.success());
+    assert_eq!(
+        serde_json::from_slice::<serde_json::Value>(&shown.stdout).unwrap(),
+        json
+    );
+    let list = fixture_cli()
+        .args(["clean", "plan", "--list", "--json"])
+        .env("HOME", &home)
+        .output()
+        .unwrap();
+    assert!(list.status.success());
+    assert_eq!(
+        serde_json::from_slice::<serde_json::Value>(&list.stdout).unwrap()["plans"][0],
+        json
+    );
+    let text = fixture_cli()
+        .args(["clean", "plan", "--show", id])
+        .env("HOME", &home)
+        .output()
+        .unwrap();
+    assert!(text.status.success());
+    let text = String::from_utf8(text.stdout).unwrap();
+    assert!(text.contains("This plan changes nothing."));
+    assert!(text.contains("lower bound"));
+    assert!(text.contains("incomplete scan, run with --deep"));
+    let refused = fixture_cli()
+        .args(["clean", "plan", "--provider", "local-trash"])
+        .env("HOME", &home)
+        .output()
+        .unwrap();
+    assert!(!refused.status.success());
+    let invalid = fixture_cli()
+        .args(["clean", "plan", "--list", "--deep"])
+        .env("HOME", &home)
+        .output()
+        .unwrap();
+    assert_eq!(invalid.status.code(), Some(2));
+    assert_eq!(
+        std::fs::read(playwright.join("old")).unwrap(),
+        vec![b'x'; 4096]
+    );
+    assert!(
+        std::fs::symlink_metadata(cypress.join("link"))
+            .unwrap()
+            .is_symlink()
+    );
+    // Send the real CLI fixture output to the sandbox harness log, with only the
+    // random fixture prefix redacted. This provides a reproducible report example.
+    let example = format!(
+        "\nPLAN FIXTURE (temporary home shown as <fixture>)\n{text}\nPLAN JSON FIXTURE\n{}\n",
+        String::from_utf8(output.stdout).unwrap()
+    )
+    .replace(home.to_str().unwrap(), "<fixture>");
+    std::io::stdout().write_all(example.as_bytes()).unwrap();
     std::fs::remove_dir_all(home).unwrap();
 }

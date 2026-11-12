@@ -43,6 +43,11 @@
       "review": "passed_under_os_sandbox"
     },
     {
+      "name": "cli:test/immutable_plan_cli_show_list_json_and_nonempty_fixture",
+      "class": "fixture_fs",
+      "review": "passed_under_os_sandbox"
+    },
+    {
       "name": "cli:test/invalid_class_is_usage_error_before_scanning",
       "class": "fixture_fs",
       "review": "passed_under_os_sandbox"

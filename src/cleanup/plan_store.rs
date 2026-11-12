@@ -104,6 +104,16 @@ impl StoredPlan {
             if p.provider.is_empty() || p.consequence.is_empty() || p.completeness.is_empty() {
                 return Err(io::Error::other("Malformed plan provider"));
             }
+            if !p.targets.is_empty()
+                && (!super::plan_builder::ALLOWED.contains(&p.provider.as_str())
+                    || p.class != "rebuildable_cache"
+                    || p.risk == "protected"
+                    || p.completeness != "complete")
+            {
+                return Err(io::Error::other(
+                    "Ineligible provider targets in stored plan",
+                ));
+            }
             for t in &p.targets {
                 absolute(&t.path)?;
                 if t.path.parent() != Some(p.root.as_path())
