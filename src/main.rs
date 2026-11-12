@@ -178,11 +178,23 @@ fn main() -> ExitCode {
             return ExitCode::SUCCESS;
         }
         let mut config_path = None;
+        let mut class_filter = "all";
         let mut valid = tail.is_empty() || tail[0] == "scan" || tail[0] == "retry";
         let mut i = 1;
         while i < tail.len() {
             if tail[i] == "--config" && config_path.is_none() && i + 1 < tail.len() {
                 config_path = Some(&tail[i + 1]);
+                i += 2;
+            } else if tail[i] == "--class" && i + 1 < tail.len() {
+                match tail[i + 1].to_str() {
+                    Some("cache") => class_filter = "cache",
+                    Some("review") => class_filter = "review",
+                    Some("all") => class_filter = "all",
+                    _ => {
+                        valid = false;
+                        break;
+                    }
+                }
                 i += 2;
             } else if tail[i] == "--json"
                 || tail[i] == "--deep"
@@ -253,9 +265,10 @@ fn main() -> ExitCode {
                 } else {
                     println!(
                         "{}",
-                        report.render_options(
+                        report.render_filtered(
                             tail.iter().any(|a| a == "--all"),
-                            tail.iter().any(|a| a == "--verbose")
+                            tail.iter().any(|a| a == "--verbose"),
+                            class_filter
                         )
                     );
                 }

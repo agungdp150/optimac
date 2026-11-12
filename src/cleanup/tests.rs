@@ -624,6 +624,15 @@ fn class_groups_keep_review_separate_and_mark_incomplete() {
         notes: vec![],
         capabilities: catalog(),
     };
+    let cache = report.render_filtered(true, false, "cache");
+    let review = report.render_filtered(true, false, "review");
+    let all = report.render_filtered(true, false, "all");
+    assert!(cache.contains("pip-cache — rebuildable_cache"));
+    assert!(!cache.contains("application-support/example — user_state"));
+    assert!(review.contains("application-support/example — user_state"));
+    assert!(!review.contains("pip-cache — rebuildable_cache"));
+    assert!(all.contains("app-user-caches/example — unknown_content"));
+    assert!(cache.contains("Review (user state, backups, simulators, app data): 30 B"));
     let g = report.grouped_totals();
     assert_eq!(
         [

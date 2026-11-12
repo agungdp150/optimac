@@ -142,6 +142,28 @@ impl Inventory {
         self.render_options(true, true)
     }
     pub fn render_options(&self, all: bool, verbose: bool) -> String {
+        self.render_filtered(all, verbose, "all")
+    }
+    fn class_label(&self, row: &ProviderReport) -> &str {
+        let id = row.provider.split('/').next().unwrap_or("");
+        self.capabilities
+            .iter()
+            .find(|c| c.provider == id || super::registry::alias(&c.provider) == id)
+            .map(|c| c.class.as_str())
+            .unwrap_or(match id {
+                "docker-desktop-storage" | "ios-simulator-devices" | "orbstack-storage" => {
+                    "user_state"
+                }
+                "crash-reports" => "logs",
+                _ => "unknown_content",
+            })
+    }
+    pub fn render_filtered(&self, all: bool, verbose: bool, filter: &str) -> String {
+        let included = |r: &ProviderReport| match filter {
+            "cache" => self.group_index(r) == 0,
+            "review" => self.group_index(r) == 2,
+            _ => true,
+        };
         let summary = self.summary();
         let lower = if summary["lower_bound"] == true {
             " (lower bound)"
@@ -212,7 +234,7 @@ impl Inventory {
         let mut rows: Vec<_> = self
             .providers
             .iter()
-            .filter(|r| r.allocated_bytes.is_some())
+            .filter(|r| r.allocated_bytes.is_some() && included(r))
             .collect();
         rows.sort_by(|a, b| {
             b.allocated_bytes
@@ -223,8 +245,9 @@ impl Inventory {
         for r in rows.into_iter().take(if all { usize::MAX } else { 15 }) {
             let note = r.note.lines().next().unwrap_or("");
             text.push_str(&format!(
-                "{} — {:?} — {} — {}\n",
+                "{} — {} — {:?} — {} — {}\n",
                 r.provider,
+                self.class_label(r),
                 r.status,
                 crate::format_size(r.allocated_bytes.unwrap()),
                 note
@@ -250,10 +273,11 @@ impl Inventory {
         }
         if all {
             text.push_str("\nAll providers\n");
-            for r in &self.providers {
+            for r in self.providers.iter().filter(|r| included(r)) {
                 text.push_str(&format!(
-                    "{} — {:?} — {:?} — logical: {}; allocated: {}; {}\n",
+                    "{} — {} — {:?} — {:?} — logical: {}; allocated: {}; {}\n",
                     r.provider,
+                    self.class_label(r),
                     r.status,
                     r.root,
                     r.logical_bytes

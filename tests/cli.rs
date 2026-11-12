@@ -186,3 +186,12 @@ exclude_name_patterns = ["*.tmp"]
     }
     std::fs::remove_dir_all(home).unwrap();
 }
+
+#[test]
+fn invalid_class_is_usage_error_before_scanning() {
+    let result = Command::new(env!("CARGO_BIN_EXE_optimac"))
+        .args(["clean", "scan", "--class", "invalid"])
+        .output()
+        .unwrap();
+    assert_eq!(result.status.code(), Some(2));
+}
