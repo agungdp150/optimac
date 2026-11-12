@@ -7,11 +7,15 @@ use super::{
     RecoveryContext, error, fs_ops,
     unit::{self, StoredRecord, UnitRecord},
 };
-use crate::fixture_paths::FixtureRoot;
+use crate::{
+    cleanup::activity::{Activity, ActivityCheck},
+    fixture_paths::FixtureRoot,
+};
+use serde::{Deserialize, Serialize};
 use std::{
     ffi::{CStr, CString, OsStr},
     fs::File,
-    io,
+    io::{self, Read, Write},
     os::{
         fd::{AsRawFd, FromRawFd},
         unix::{ffi::OsStrExt, fs::MetadataExt},
@@ -25,7 +29,10 @@ pub const WARNING: &str =
 /// Whether a purge starts on an intact payload or continues an earlier one.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PurgeStart {
+    /// Intact payload; it is renamed to `deleting` before the walk.
     Fresh,
+    /// A partially deleted `deleting` tree from an earlier purge of this record.
+    Resume,
 }
 
 /// Everything the confirmation shows; produced without writing anything.
@@ -48,6 +55,182 @@ impl PurgeReview {
             state = self.state,
         )
     }
+}
+
+const JOURNAL: &str = "purge-journal";
+const JOURNAL_VERSION: u32 = 1;
+const MAX_JOURNAL_BYTES: u64 = 1 << 20;
+
+/// One append-only, fsynced purge journal line.
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PurgeEvent {
+    version: u32,
+    state: String,
+    device: u64,
+    inode: u64,
+    allocated_bytes: u64,
+    deleted: usize,
+    failed: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    reason: Option<String>,
+    at: u64,
+}
+
+/// Folded purge journal: last state and counts.
+#[derive(Debug)]
+pub(super) struct PurgeJournal {
+    pub last: String,
+    pub deleted: usize,
+    pub failed: usize,
+    pub reason: Option<String>,
+    pub torn: bool,
+}
+
+pub(super) fn read_journal(directory: &File) -> io::Result<Option<PurgeJournal>> {
+    let file = match super::context::open_child(directory, JOURNAL, libc::O_RDONLY) {
+        Ok(file) => file,
+        Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(None),
+        Err(e) => return Err(e),
+    };
+    let meta = file.metadata()?;
+    if !meta.is_file() || meta.nlink() != 1 || meta.uid() != unsafe { libc::geteuid() } {
+        return Err(error("Unsafe purge journal"));
+    }
+    let mut bytes = Vec::new();
+    file.take(MAX_JOURNAL_BYTES + 1).read_to_end(&mut bytes)?;
+    if bytes.len() as u64 > MAX_JOURNAL_BYTES {
+        return Err(error("Oversized purge journal"));
+    }
+    let mut lines: Vec<&[u8]> = bytes.split(|b| *b == b'\n').collect();
+    let torn = lines.last().is_some_and(|l| !l.is_empty());
+    lines.pop();
+    let mut journal: Option<PurgeJournal> = None;
+    for line in lines {
+        let event: PurgeEvent = serde_json::from_slice(line)
+            .map_err(|e| error(&format!("Corrupt purge journal: {e}")))?;
+        if event.version != JOURNAL_VERSION
+            || !matches!(
+                event.state.as_str(),
+                "intent" | "deleting" | "completed" | "failed"
+            )
+        {
+            return Err(error("Unexpected purge journal entry"));
+        }
+        let deleted = journal.as_ref().map_or(0, |j| j.deleted) + event.deleted;
+        journal = Some(PurgeJournal {
+            last: event.state,
+            deleted,
+            failed: event.failed,
+            reason: event.reason,
+            torn,
+        });
+    }
+    if journal.is_none() && torn {
+        return Ok(Some(PurgeJournal {
+            last: "intent".into(),
+            deleted: 0,
+            failed: 0,
+            reason: None,
+            torn,
+        }));
+    }
+    Ok(journal)
+}
+
+pub(super) fn entries(n: usize, what: &str) -> String {
+    format!("{n} {} {what}", if n == 1 { "entry" } else { "entries" })
+}
+
+/// True once a purge has written anything for this record.
+pub(super) fn purge_started(directory: &File) -> io::Result<bool> {
+    Ok(read_journal(directory)?.is_some() || unit::present(directory, c"deleting")?.is_some())
+}
+
+/// Purge lifecycle state for `recovery inspect`, or None if no purge began.
+pub(super) fn purge_state(directory: &File, id: &str) -> io::Result<Option<String>> {
+    let deleting = unit::present(directory, c"deleting")?.is_some();
+    let payload = unit::present(directory, c"payload")?.is_some();
+    let Some(j) = read_journal(directory)? else {
+        return Ok(deleting.then(|| {
+            "needs_reconciliation: a deleting payload exists without a purge journal; cause not inferred".into()
+        }));
+    };
+    let mut state = match (j.last.as_str(), payload, deleting) {
+        ("completed", false, false) => {
+            "purge_completed: payload permanently deleted; it cannot be restored".to_string()
+        }
+        ("failed", false, true) => format!(
+            "purge_failed: payload partially deleted and cannot be restored; {}{}; fix the cause and re-run optimac recovery purge {id}",
+            entries(j.failed, "could not be deleted"),
+            j.reason
+                .as_ref()
+                .map(|r| format!("; stopped: {r}"))
+                .unwrap_or_default()
+        ),
+        ("intent" | "deleting", false, true) => format!(
+            "needs_reconciliation: purge interrupted while deleting; payload partially deleted and cannot be restored; re-run optimac recovery purge {id} to continue (never automatic)"
+        ),
+        ("intent", true, false) => format!(
+            "needs_reconciliation: purge confirmed but nothing was deleted; payload intact; re-run optimac recovery purge {id} to continue"
+        ),
+        _ => "needs_reconciliation: purge journal and payload are inconsistent; cause not inferred"
+            .into(),
+    };
+    if j.torn {
+        state.push_str(" (last journal entry cut off)");
+    }
+    Ok(Some(state))
+}
+
+/// Extra inspect line for records with a purge journal.
+pub(super) fn journal_summary(directory: &File) -> io::Result<Option<String>> {
+    Ok(read_journal(directory)?.map(|j| {
+        format!(
+            "Purge journal: last state {}; {} entries deleted so far; {} failed in the last run",
+            j.last, j.deleted, j.failed
+        )
+    }))
+}
+
+fn append(
+    journal: &mut File,
+    record: &UnitRecord,
+    state: &str,
+    report: Option<&WalkReport>,
+    reason: Option<String>,
+) -> io::Result<()> {
+    let mut line = serde_json::to_vec(&PurgeEvent {
+        version: JOURNAL_VERSION,
+        state: state.into(),
+        device: record.device,
+        inode: record.inode,
+        allocated_bytes: record.allocated_bytes,
+        deleted: report.map_or(0, |r| r.deleted),
+        failed: report.map_or(0, |r| r.failed),
+        reason,
+        at: std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.as_secs()),
+    })?;
+    line.push(b'\n');
+    journal.write_all(&line)?;
+    journal.sync_all()
+}
+
+/// Test-only interruption points; each simulates process death.
+#[derive(Clone, Debug, Default)]
+pub(crate) struct PurgeFaults {
+    pub walk: WalkFaults,
+    pub stop_after_intent: bool,
+    pub stop_after_rename: bool,
+}
+
+/// What one purge run did.
+#[derive(Debug)]
+pub struct PurgeResult {
+    pub report: WalkReport,
+    pub completed: bool,
 }
 
 fn not_eligible(id: &str, why: &str) -> io::Error {
@@ -267,7 +450,6 @@ fn clear(
 /// descriptor opened with O_NOFOLLOW; nothing outside the tree is touched.
 /// Errors are returned only when the walk could not start or was interrupted;
 /// per-entry failures and stops are in the report.
-#[cfg_attr(not(test), allow(dead_code))] // Wired into purge execution next.
 pub(super) fn delete_tree(
     parent: &File,
     name: &CStr,
@@ -363,36 +545,160 @@ impl RecoveryContext {
             }
         };
         record.validate(&self.home, &self.root)?;
-        let state = unit::state_of(&directory, &record)?;
         let payload = unit::present(&directory, c"payload")?;
-        if let Some(st) = &payload
-            && st.st_mode & libc::S_IFMT == libc::S_IFLNK
-        {
-            return Err(not_eligible(id, "payload is a symlink"));
+        let deleting = unit::present(&directory, c"deleting")?;
+        for st in [&payload, &deleting].into_iter().flatten() {
+            if st.st_mode & libc::S_IFMT == libc::S_IFLNK {
+                return Err(not_eligible(id, "payload is a symlink"));
+            }
+            if !unit::identity_matches(st, &record) {
+                return Err(not_eligible(
+                    id,
+                    "payload identity (device, inode, owner, type) does not match the record",
+                ));
+            }
         }
-        if let Some(st) = &payload
-            && !unit::identity_matches(st, &record)
-        {
-            return Err(not_eligible(
-                id,
-                "payload identity (device, inode, owner, type) does not match the record",
-            ));
-        }
-        if !state.starts_with("moved: payload in recovery") {
-            return Err(not_eligible(
-                id,
-                &format!("not in state 'moved: payload in recovery' (state: {state})"),
-            ));
-        }
+        let journal = read_journal(&directory)?;
+        let restore_started = unit::present(&directory, c"restore-intent")?.is_some();
+        let resumable =
+            || -> io::Result<String> { Ok(purge_state(&directory, id)?.unwrap_or_default()) };
+        let (start, state) = match (&journal, payload.is_some(), deleting.is_some()) {
+            (None, _, false) => {
+                let state = unit::state_of(&directory, &record)?;
+                if !state.starts_with("moved: payload in recovery") {
+                    return Err(not_eligible(
+                        id,
+                        &format!("not in state 'moved: payload in recovery' (state: {state})"),
+                    ));
+                }
+                (PurgeStart::Fresh, state.to_string())
+            }
+            (Some(j), true, false) if j.last == "intent" && !restore_started => {
+                (PurgeStart::Fresh, resumable()?)
+            }
+            (Some(j), false, true)
+                if matches!(j.last.as_str(), "intent" | "deleting" | "failed") =>
+            {
+                (PurgeStart::Resume, resumable()?)
+            }
+            (Some(j), false, false) if j.last == "completed" => {
+                return Err(not_eligible(id, "payload was already permanently deleted"));
+            }
+            _ => {
+                return Err(not_eligible(
+                    id,
+                    "purge journal and payload are inconsistent; inspect the record",
+                ));
+            }
+        };
         Ok((
             PurgeReview {
                 id: id.into(),
                 record,
-                start: PurgeStart::Fresh,
-                state: state.into(),
+                start,
+                state,
             },
             directory,
         ))
+    }
+
+    /// Permanently delete a reviewed directory-unit payload. Re-checks
+    /// eligibility and activity under the lock, syncs the intent, renames the
+    /// payload to `deleting`, walks it and records completed or failed.
+    pub fn purge_directory_unit(
+        &self,
+        authority: Option<&FixtureRoot>,
+        id: &str,
+        activity: &mut dyn ActivityCheck,
+    ) -> io::Result<PurgeResult> {
+        self.purge_directory_unit_with(authority, id, activity, &PurgeFaults::default())
+    }
+
+    pub(crate) fn purge_directory_unit_with(
+        &self,
+        authority: Option<&FixtureRoot>,
+        id: &str,
+        activity: &mut dyn ActivityCheck,
+        faults: &PurgeFaults,
+    ) -> io::Result<PurgeResult> {
+        if unsafe { libc::geteuid() } == 0 {
+            return Err(error("Do not purge as root"));
+        }
+        let _lock = self.lock()?;
+        let (review, directory) = self.purge_review_locked(authority, id)?;
+        let name = match review.start {
+            PurgeStart::Fresh => "payload",
+            PurgeStart::Resume => "deleting",
+        };
+        match activity.check(&self.root.join(id).join(name)) {
+            Activity::Idle => {}
+            Activity::InUse(why) => {
+                return Err(error(&format!(
+                    "Payload is in use ({why}); nothing deleted"
+                )));
+            }
+            Activity::Unknown(why) => {
+                return Err(error(&format!(
+                    "Payload activity is unknown ({why}); nothing deleted"
+                )));
+            }
+        }
+        let mut journal = super::context::open_child(
+            &directory,
+            JOURNAL,
+            libc::O_WRONLY | libc::O_CREAT | libc::O_APPEND,
+        )?;
+        let meta = journal.metadata()?;
+        if !meta.is_file() || meta.nlink() != 1 || meta.uid() != unsafe { libc::geteuid() } {
+            return Err(error("Unsafe purge journal"));
+        }
+        let record = &review.record;
+        match review.start {
+            PurgeStart::Fresh => {
+                append(&mut journal, record, "intent", None, None)?;
+                directory.sync_all()?;
+                if faults.stop_after_intent {
+                    return Err(error("Injected interruption after intent"));
+                }
+                fs_ops::rename_at_excl(&directory, c"payload", &directory, c"deleting")?;
+                directory.sync_all()?;
+                let renamed = fs_ops::stat_at(&directory, c"deleting")?;
+                if !unit::identity_matches(&renamed, record) {
+                    return Err(error("Payload changed during rename; nothing deleted"));
+                }
+                append(&mut journal, record, "deleting", None, None)?;
+                if faults.stop_after_rename {
+                    return Err(error("Injected interruption after rename"));
+                }
+            }
+            PurgeStart::Resume => append(
+                &mut journal,
+                record,
+                "deleting",
+                None,
+                Some("resumed manually".into()),
+            )?,
+        }
+        let report = delete_tree(
+            &directory,
+            c"deleting",
+            (record.device, record.inode),
+            &faults.walk,
+        )?;
+        let completed = unit::present(&directory, c"deleting")?.is_none();
+        if completed {
+            append(&mut journal, record, "completed", Some(&report), None)?;
+        } else {
+            append(
+                &mut journal,
+                record,
+                "failed",
+                Some(&report),
+                report.stopped.clone(),
+            )?;
+        }
+        directory.sync_all()?;
+        Ok(PurgeResult { report, completed })
     }
 }
 
@@ -749,5 +1055,249 @@ pub(super) mod tests {
         let report = delete_tree(&parent, &cname(&unit), identity, &WalkFaults::default()).unwrap();
         assert_eq!((report.deleted, report.failed), (before - 2, 0));
         assert!(!unit.exists());
+    }
+
+    pub struct Fixed(pub Activity, pub Vec<PathBuf>);
+    impl ActivityCheck for Fixed {
+        fn check(&mut self, unit: &Path) -> Activity {
+            self.1.push(unit.to_path_buf());
+            self.0.clone()
+        }
+    }
+    pub fn idle() -> Fixed {
+        Fixed(Activity::Idle, Vec::new())
+    }
+    fn inspect(s: &Setup, id: &str) -> String {
+        s.context.inspect_directory_unit(id).unwrap()
+    }
+    fn names_in(dir: &Path) -> Vec<String> {
+        let mut names: Vec<_> = fs::read_dir(dir)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        names.sort();
+        names
+    }
+
+    #[test]
+    fn purge_deletes_moved_unit_payload_and_records_completion() {
+        use std::os::unix::fs::PermissionsExt;
+        let s = Setup::new();
+        s.moved("chromium-1248", "100", Faults::default()).unwrap();
+        let entries = metadata(&s.root().join("100/payload")).len();
+        let outside = metadata(&s.outside);
+        fs::set_permissions(&s.outside, fs::Permissions::from_mode(0o000)).unwrap();
+        let mut activity = idle();
+        let result = s
+            .context
+            .purge_directory_unit(Some(&s.cap), "100", &mut activity)
+            .unwrap();
+        assert!(result.completed);
+        assert_eq!((result.report.deleted, result.report.failed), (entries, 0));
+        assert_eq!(activity.1, [s.root().join("100/payload")]);
+        assert_eq!(
+            names_in(&s.root().join("100")),
+            ["move-completed", "purge-journal", "record.json"]
+        );
+        let text = inspect(&s, "100");
+        println!("INSPECT_AFTER_PURGE\n{text}");
+        assert!(text.contains("State: purge_completed: payload permanently deleted"));
+        assert!(text.contains(&format!(
+            "Purge journal: last state completed; {entries} entries deleted so far; 0 failed"
+        )));
+        let again = s.context.purge_review(Some(&s.cap), "100").unwrap_err();
+        assert!(again.to_string().contains("already permanently deleted"));
+        let restore = s
+            .context
+            .restore_directory_unit(Some(&s.cap), "100")
+            .unwrap_err();
+        assert!(restore.to_string().contains("purge was started"));
+        fs::set_permissions(&s.outside, fs::Permissions::from_mode(0o700)).unwrap();
+        assert_eq!(metadata(&s.outside), outside);
+    }
+
+    #[test]
+    fn purge_refuses_in_use_or_unknown_activity_without_writing() {
+        let s = Setup::new();
+        s.moved("chromium-1248", "100", Faults::default()).unwrap();
+        let before = metadata(&s.home);
+        for (state, needle) in [
+            (
+                Activity::InUse("in use by process 7 (Chromium)".into()),
+                "in use",
+            ),
+            (
+                Activity::Unknown("your process 8 could not be inspected".into()),
+                "unknown",
+            ),
+        ] {
+            let err = s
+                .context
+                .purge_directory_unit(Some(&s.cap), "100", &mut Fixed(state, Vec::new()))
+                .unwrap_err()
+                .to_string();
+            assert!(
+                err.contains(needle) && err.contains("nothing deleted"),
+                "{err}"
+            );
+            assert_eq!(metadata(&s.home), before);
+        }
+        assert!(inspect(&s, "100").contains("State: moved"));
+    }
+
+    #[test]
+    fn purge_interruptions_are_readable_never_replayed_and_resumable() {
+        let s = Setup::new();
+        s.moved("chromium-1248", "100", Faults::default()).unwrap();
+        let entries = metadata(&s.root().join("100/payload")).len();
+        let faults = PurgeFaults {
+            walk: WalkFaults {
+                stop_after_entries: Some(3),
+                ..WalkFaults::default()
+            },
+            ..PurgeFaults::default()
+        };
+        assert!(
+            s.context
+                .purge_directory_unit_with(Some(&s.cap), "100", &mut idle(), &faults)
+                .is_err()
+        );
+        let record_dir = s.root().join("100");
+        let frozen = metadata(&record_dir);
+        for _ in 0..2 {
+            let text = inspect(&s, "100");
+            assert!(
+                text.contains("State: needs_reconciliation: purge interrupted while deleting; payload partially deleted and cannot be restored; re-run optimac recovery purge 100 to continue (never automatic)"),
+                "{text}"
+            );
+            assert!(
+                text.contains("Purge journal: last state deleting"),
+                "{text}"
+            );
+        }
+        assert!(
+            s.context
+                .restore_directory_unit(Some(&s.cap), "100")
+                .is_err()
+        );
+        assert_eq!(
+            metadata(&record_dir),
+            frozen,
+            "inspect/restore replayed or changed something"
+        );
+        let review = s.context.purge_review(Some(&s.cap), "100").unwrap();
+        assert_eq!(review.start, PurgeStart::Resume);
+        let mut activity = idle();
+        let result = s
+            .context
+            .purge_directory_unit(Some(&s.cap), "100", &mut activity)
+            .unwrap();
+        assert!(result.completed);
+        assert_eq!(result.report.deleted, entries - 3);
+        assert_eq!(activity.1, [s.root().join("100/deleting")]);
+        assert!(
+            inspect(&s, "100")
+                .contains("purge_completed: payload permanently deleted; it cannot be restored\n")
+        );
+
+        s.moved("firefox-1", "200", Faults::default()).unwrap();
+        let faults = PurgeFaults {
+            stop_after_intent: true,
+            ..PurgeFaults::default()
+        };
+        assert!(
+            s.context
+                .purge_directory_unit_with(Some(&s.cap), "200", &mut idle(), &faults)
+                .is_err()
+        );
+        assert!(
+            inspect(&s, "200").contains("purge confirmed but nothing was deleted; payload intact")
+        );
+        assert!(s.root().join("200/payload").is_dir());
+        let faults = PurgeFaults {
+            stop_after_rename: true,
+            ..PurgeFaults::default()
+        };
+        assert!(
+            s.context
+                .purge_directory_unit_with(Some(&s.cap), "200", &mut idle(), &faults)
+                .is_err()
+        );
+        assert!(inspect(&s, "200").contains("purge interrupted while deleting"));
+        assert!(
+            s.context
+                .purge_directory_unit(Some(&s.cap), "200", &mut idle())
+                .unwrap()
+                .completed
+        );
+        // A torn final line is reported, never guessed past.
+        let journal = s.root().join("200/purge-journal");
+        let mut bytes = fs::read(&journal).unwrap();
+        bytes.extend_from_slice(br#"{"version":1,"sta"#);
+        fs::write(&journal, &bytes).unwrap();
+        assert!(inspect(&s, "200").contains("(last journal entry cut off)"));
+    }
+
+    #[test]
+    fn purge_failures_and_boundaries_are_recorded_and_resumable_manually() {
+        use std::os::unix::fs::PermissionsExt;
+        let s = Setup::new();
+        s.moved("chromium-1248", "100", Faults::default()).unwrap();
+        let readonly = s.root().join("100/payload/Chromium.app/readonly");
+        fs::create_dir(&readonly).unwrap();
+        fs::write(readonly.join("a"), b"a").unwrap();
+        fs::set_permissions(&readonly, fs::Permissions::from_mode(0o500)).unwrap();
+        let result = s
+            .context
+            .purge_directory_unit(Some(&s.cap), "100", &mut idle())
+            .unwrap();
+        assert!(!result.completed);
+        assert_eq!(result.report.failed, 1);
+        assert_eq!(
+            result.report.failures[0].0,
+            PathBuf::from("Chromium.app/readonly/a")
+        );
+        let readonly = s.root().join("100/deleting/Chromium.app/readonly");
+        assert_eq!(
+            fs::symlink_metadata(&readonly).unwrap().mode() & 0o777,
+            0o500
+        );
+        let text = inspect(&s, "100");
+        println!("INSPECT_PURGE_FAILED\n{text}");
+        assert!(text.contains("State: purge_failed: payload partially deleted and cannot be restored; 1 entry could not be deleted; fix the cause and re-run optimac recovery purge 100"), "{text}");
+        fs::set_permissions(&readonly, fs::Permissions::from_mode(0o700)).unwrap();
+        let result = s
+            .context
+            .purge_directory_unit(Some(&s.cap), "100", &mut idle())
+            .unwrap();
+        assert!(result.completed && result.report.failed == 0);
+        assert!(inspect(&s, "100").contains("purge_completed"));
+
+        s.moved("webkit-1", "200", Faults::default()).unwrap();
+        let faults = PurgeFaults {
+            walk: WalkFaults {
+                foreign_device: Some(PathBuf::from("Chromium.app/Contents")),
+                ..WalkFaults::default()
+            },
+            ..PurgeFaults::default()
+        };
+        let result = s
+            .context
+            .purge_directory_unit_with(Some(&s.cap), "200", &mut idle(), &faults)
+            .unwrap();
+        assert!(!result.completed);
+        assert!(
+            result
+                .report
+                .stopped
+                .as_ref()
+                .unwrap()
+                .contains("mount point")
+        );
+        assert!(s.root().join("200/deleting/Chromium.app/Contents").is_dir());
+        assert!(
+            inspect(&s, "200").contains("purge_failed")
+                && inspect(&s, "200").contains("mount point")
+        );
     }
 }

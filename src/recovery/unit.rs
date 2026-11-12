@@ -329,6 +329,11 @@ impl RecoveryContext {
             return Err(error("Not a directory-unit record"));
         };
         record.validate(&self.home, &self.root)?;
+        if super::unit_purge::purge_started(&directory)? {
+            return Err(error(
+                "A permanent purge was started on this record; its payload cannot be restored",
+            ));
+        }
         let payload = present(&directory, c"payload")?
             .ok_or_else(|| error("Payload absent; nothing to restore"))?;
         if !identity_matches(&payload, &record) {
@@ -413,7 +418,13 @@ pub(super) fn state_of(directory: &File, record: &UnitRecord) -> io::Result<&'st
 /// Shared by the fixture inspector and the existing `recovery inspect` path.
 pub(super) fn describe(directory: &File, id: &str, record: &UnitRecord) -> io::Result<String> {
     let payload = present(directory, c"payload")?;
-    let state = state_of(directory, record)?;
+    let state = match super::unit_purge::purge_state(directory, id)? {
+        Some(state) => state,
+        None => state_of(directory, record)?.to_string(),
+    };
+    let purge = super::unit_purge::journal_summary(directory)?
+        .map(|line| format!("{line}\n"))
+        .unwrap_or_default();
     let original = match fs::symlink_metadata(&record.original_path) {
         Err(e) if e.kind() == io::ErrorKind::NotFound => "absent".to_string(),
         Err(e) => format!("unreadable ({e})"),
@@ -433,7 +444,7 @@ pub(super) fn describe(directory: &File, id: &str, record: &UnitRecord) -> io::R
          Recorded size: {allocated} allocated, {logical} logical (plan estimate; not re-measured)\n\
          Recorded at: {created} (Unix seconds)\n\
          Payload: {id}/{payload_name} ({payload_state})\n\
-         Inspection only; nothing was moved, restored or replayed.",
+         {purge}Inspection only; nothing was moved, restored or replayed.",
         kind = record.kind,
         version = record.version,
         path = record.original_path.display(),

@@ -583,6 +583,26 @@
       "review": "passed_under_os_sandbox"
     },
     {
+      "name": "optimac:lib/recovery::unit_purge::tests::purge_deletes_moved_unit_payload_and_records_completion",
+      "class": "fixture_fs",
+      "review": "passed_under_os_sandbox"
+    },
+    {
+      "name": "optimac:lib/recovery::unit_purge::tests::purge_failures_and_boundaries_are_recorded_and_resumable_manually",
+      "class": "fixture_fs",
+      "review": "passed_under_os_sandbox"
+    },
+    {
+      "name": "optimac:lib/recovery::unit_purge::tests::purge_interruptions_are_readable_never_replayed_and_resumable",
+      "class": "fixture_fs",
+      "review": "passed_under_os_sandbox"
+    },
+    {
+      "name": "optimac:lib/recovery::unit_purge::tests::purge_refuses_in_use_or_unknown_activity_without_writing",
+      "class": "fixture_fs",
+      "review": "passed_under_os_sandbox"
+    },
+    {
       "name": "optimac:lib/recovery::unit_purge::tests::purge_review_accepts_only_moved_directory_unit_records",
       "class": "fixture_fs",
       "review": "passed_under_os_sandbox"
