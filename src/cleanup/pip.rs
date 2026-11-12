@@ -95,11 +95,16 @@ fn resolve_with(
         match check_candidate(path) {
             Err(e) if e.kind() == io::ErrorKind::NotFound => continue,
             Err(e) => {
-                return Resolution {
-                    status: "command_failed",
-                    path: None,
-                    detail: format!("candidate refused: {e}"),
-                };
+                let mut fallback = checked_root(
+                    home,
+                    home.join("Library/Caches/pip"),
+                    "default_not_verified",
+                );
+                fallback.detail = format!(
+                    "tool not run: candidate refused ({e}); root: default, not verified: {}",
+                    home.join("Library/Caches/pip").display()
+                );
+                return fallback;
             }
             Ok(()) => {}
         }
@@ -229,6 +234,14 @@ mod tests {
         let link = base.join("link");
         symlink(&binary, &link).unwrap();
         assert!(check_candidate(&link).is_err());
+        let result = resolve_with(
+            &base,
+            None,
+            &[link.to_str().unwrap()],
+            &std::sync::atomic::AtomicBool::new(false),
+        );
+        assert_eq!(result.status, "default_not_verified");
+        assert!(result.detail.contains("tool not run: candidate refused"));
         std::fs::set_permissions(&base, std::fs::Permissions::from_mode(0o777)).unwrap();
         assert!(check_candidate(&binary).is_err());
         std::fs::set_permissions(&base, std::fs::Permissions::from_mode(0o700)).unwrap();

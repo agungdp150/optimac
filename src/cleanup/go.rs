@@ -47,8 +47,33 @@ fn resolve_with(
         match check_candidate(path) {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
             Err(e) => {
-                result = Some(Err(format!("candidate refused: {e}")));
-                break;
+                let note =
+                    format!("tool not run: candidate refused ({e}); root: default, not verified");
+                if a.is_none() {
+                    let mut r = root(
+                        home,
+                        home.join("Library/Caches/go-build"),
+                        "default_not_verified",
+                        "GOCACHE",
+                    );
+                    r.detail =
+                        format!("{note}: {}", home.join("Library/Caches/go-build").display());
+                    a = Some(r);
+                }
+                if b.is_none() {
+                    let mut r = root(
+                        home,
+                        home.join("go/pkg/mod"),
+                        "default_not_verified",
+                        "GOMODCACHE",
+                    );
+                    r.detail = format!("{note}: {}", home.join("go/pkg/mod").display());
+                    b = Some(r);
+                }
+                return GoRoots {
+                    build: a.unwrap(),
+                    modules: b.unwrap(),
+                };
             }
             Ok(()) => {}
         }
@@ -199,6 +224,17 @@ mod tests {
         let r = resolve_with(&home, Some("/outside".into()), None, &[], &cancel);
         assert_eq!(r.build.status, "root_invalid");
         assert_eq!(r.modules.status, "default_not_verified");
+        let link = home.join("go-link");
+        std::os::unix::fs::symlink(&exe, &link).unwrap();
+        let refused = resolve_with(&home, None, None, &[link.to_str().unwrap()], &cancel);
+        assert_eq!(refused.build.status, "default_not_verified");
+        assert_eq!(refused.modules.status, "default_not_verified");
+        assert!(
+            refused
+                .build
+                .detail
+                .contains("tool not run: candidate refused")
+        );
         std::fs::write(&exe, b"#!/bin/sh\nexit 1\n").unwrap();
         assert_eq!(
             resolve_with(&home, None, None, &paths, &cancel)
