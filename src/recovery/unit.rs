@@ -4,16 +4,24 @@
 //! moved only by the existing exclusive same-volume rename: there is no
 //! copy/delete fallback, no automatic replay after interruption and no purge.
 //! Internal symlinks travel with the directory; they are never read or followed.
-use super::{Record, error};
+use super::{
+    Record, RecoveryContext, error,
+    fs_ops::{rename_at_excl, stat_at},
+};
+use crate::fixture_paths::FixtureRoot;
 use serde::{Deserialize, Serialize};
 use std::{
-    io,
+    ffi::CString,
+    fs::File,
+    io::{self, Write},
+    os::unix::{ffi::OsStrExt, fs::MetadataExt},
     path::{Component, Path, PathBuf},
 };
 
 pub const UNIT_RECORD_VERSION: u32 = 2;
 pub const UNIT_RECORD_KIND: &str = "plan_directory_unit";
 const PAYLOAD: &str = "payload";
+const MOVE_COMPLETED: &str = "move-completed";
 const MAX_RECORD_BYTES: usize = 65536;
 
 /// A durable record for one top-level plan unit moved into recovery.
@@ -127,16 +135,345 @@ pub(super) fn parse_record(bytes: &[u8]) -> io::Result<StoredRecord> {
     }
 }
 
+/// Fault injection for interruption and cross-volume tests.
+#[derive(Clone, Copy, Debug, Default)]
+pub(crate) struct Faults {
+    pub device: Option<u64>,
+    pub stop_after_record: bool,
+    pub stop_after_move: bool,
+}
+
+fn valid_id(id: &str) -> io::Result<()> {
+    if id.is_empty() || !id.chars().all(|c| c.is_ascii_digit() || c == '-') {
+        return Err(error("Invalid recovery ID"));
+    }
+    Ok(())
+}
+
+fn identity_matches(st: &libc::stat, record: &UnitRecord) -> bool {
+    st.st_mode & libc::S_IFMT == libc::S_IFDIR
+        && st.st_dev as u64 == record.device
+        && st.st_ino == record.inode
+        && st.st_uid == record.owner
+        && st.st_uid == unsafe { libc::geteuid() }
+}
+
+fn write_marker(directory: &File, name: &str, text: &[u8]) -> io::Result<()> {
+    let mut file = super::context::open_child(
+        directory,
+        name,
+        libc::O_WRONLY | libc::O_CREAT | libc::O_EXCL,
+    )?;
+    file.write_all(text)?;
+    file.sync_all()?;
+    directory.sync_all()
+}
+
+impl RecoveryContext {
+    /// Fixture contexts resolve through their capability; production contexts
+    /// walk from `/` with no-follow opens. Either way a symlinked ancestor fails.
+    fn unit_parent(
+        &self,
+        authority: Option<&FixtureRoot>,
+        path: &Path,
+    ) -> io::Result<(File, CString)> {
+        if self.fixture {
+            let cap = authority.ok_or_else(|| error("fixture authorization required"))?;
+            if self.fixture_identity != Some(cap.fixture_identity()?) {
+                return Err(error("fixture authorization mismatch"));
+            }
+            return cap.source_parent(path);
+        }
+        let parent =
+            super::fs_ops::open_dir(path.parent().ok_or_else(|| error("Missing parent"))?)?;
+        let name = path.file_name().ok_or_else(|| error("Missing name"))?;
+        Ok((parent, CString::new(name.as_bytes())?))
+    }
+
+    fn require_lock(&self, lock: &File) -> io::Result<()> {
+        let held = lock.metadata()?;
+        let current = stat_at(&self.directory, c".lock")?;
+        if held.dev() != current.st_dev as u64 || held.ino() != current.st_ino {
+            return Err(error("Recovery lock is not held for this directory"));
+        }
+        Ok(())
+    }
+
+    /// Move one plan directory unit into recovery. The caller holds `lock()`.
+    /// The record is synced before the rename and the completion marker after.
+    pub fn move_directory_unit(
+        &self,
+        lock: &File,
+        authority: Option<&FixtureRoot>,
+        id: &str,
+        record: &UnitRecord,
+    ) -> io::Result<()> {
+        self.move_directory_unit_with(lock, authority, id, record, Faults::default())
+    }
+
+    pub(crate) fn move_directory_unit_with(
+        &self,
+        lock: &File,
+        authority: Option<&FixtureRoot>,
+        id: &str,
+        record: &UnitRecord,
+        faults: Faults,
+    ) -> io::Result<()> {
+        valid_id(id)?;
+        if unsafe { libc::geteuid() } == 0 {
+            return Err(error("Do not run cleanup as root"));
+        }
+        self.require_lock(lock)?;
+        record.validate(&self.home, &self.root)?;
+        let (parent, name) = self.unit_parent(authority, &record.original_path)?;
+        let unit = stat_at(&parent, &name)?;
+        if !identity_matches(&unit, record) {
+            return Err(error(
+                "Unit identity changed or unit is not an owned directory; not moved",
+            ));
+        }
+        let device = faults.device.unwrap_or(unit.st_dev as u64);
+        if device != self.directory.metadata()?.dev() {
+            return Err(error("Cross-volume unit refused; no copy/delete fallback"));
+        }
+        let directory = self.create_journal_bytes(id, &serde_json::to_vec(record)?)?;
+        if faults.stop_after_record {
+            return Err(error("Injected interruption after record"));
+        }
+        if !identity_matches(&stat_at(&parent, &name)?, record) {
+            return Err(error(
+                "Unit changed after its record was written; not moved",
+            ));
+        }
+        rename_at_excl(&parent, &name, &directory, c"payload")?;
+        let moved = stat_at(&directory, c"payload")?;
+        if !identity_matches(&moved, record) {
+            let rollback = rename_at_excl(&directory, c"payload", &parent, &name);
+            return Err(error(&format!(
+                "Unit changed during move; rollback {rollback:?}. Recovery ID {id}"
+            )));
+        }
+        parent.sync_all()?;
+        directory.sync_all()?;
+        if faults.stop_after_move {
+            return Err(error("Injected interruption after move"));
+        }
+        write_marker(&directory, MOVE_COMPLETED, b"Move to recovery completed\n")
+    }
+}
+
 #[cfg(all(test, target_os = "macos"))]
 mod tests {
     use super::*;
-    use crate::{
-        fixture_paths::FixtureRoot,
-        recovery::{RecoveryContext, RecoveryPolicy},
+    use crate::recovery::RecoveryPolicy;
+    use std::{
+        fs,
+        os::unix::fs::{PermissionsExt, symlink},
     };
-    use std::{fs, os::unix::fs::MetadataExt};
 
     const PLAN: &str = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+
+    /// Bundle-style unit modelled on ms-playwright/chromium-NNNN: a framework
+    /// with Versions/Current, Helpers, Libraries and Resources links, plus one
+    /// absolute link to a directory outside the unit and outside the fixture.
+    fn bundle(home: &Path, outside: &Path) -> PathBuf {
+        let unit = home.join("Library/Caches/ms-playwright/chromium-1248");
+        let framework =
+            unit.join("chrome-mac/Chromium.app/Contents/Frameworks/Chromium Framework.framework");
+        let version = framework.join("Versions/A");
+        for dir in ["Helpers", "Libraries", "Resources"] {
+            fs::create_dir_all(version.join(dir)).unwrap();
+        }
+        fs::write(version.join("Helpers/chrome_crashpad_handler"), b"helper").unwrap();
+        fs::write(version.join("Libraries/libEGL.dylib"), b"library").unwrap();
+        fs::write(version.join("Resources/Info.plist"), b"plist").unwrap();
+        fs::write(version.join("Chromium Framework"), b"binary").unwrap();
+        symlink("A", framework.join("Versions/Current")).unwrap();
+        for name in ["Helpers", "Libraries", "Resources", "Chromium Framework"] {
+            symlink(format!("Versions/Current/{name}"), framework.join(name)).unwrap();
+        }
+        fs::create_dir_all(outside).unwrap();
+        fs::write(outside.join("secret"), b"outside").unwrap();
+        symlink(outside, unit.join("external-profile")).unwrap();
+        unit
+    }
+
+    /// No-follow tree snapshot: path, identity, link target or file bytes.
+    fn snapshot(root: &Path) -> Vec<(PathBuf, u64, String)> {
+        let mut out = Vec::new();
+        let mut pending = vec![root.to_path_buf()];
+        while let Some(path) = pending.pop() {
+            let m = fs::symlink_metadata(&path).unwrap();
+            let detail = if m.file_type().is_symlink() {
+                format!("link:{}", fs::read_link(&path).unwrap().display())
+            } else if m.is_dir() {
+                for e in fs::read_dir(&path).unwrap() {
+                    pending.push(e.unwrap().path());
+                }
+                "dir".into()
+            } else {
+                format!(
+                    "file:{}",
+                    String::from_utf8_lossy(&fs::read(&path).unwrap())
+                )
+            };
+            out.push((
+                path.strip_prefix(root).unwrap().to_path_buf(),
+                m.ino(),
+                detail,
+            ));
+        }
+        out.sort();
+        out
+    }
+
+    fn record(unit: &Path) -> UnitRecord {
+        let m = fs::symlink_metadata(unit).unwrap();
+        UnitRecord::directory(
+            unit.to_path_buf(),
+            "playwright-browsers",
+            PLAN,
+            (m.dev(), m.ino(), m.uid()),
+            (384_000_000, 380_000_000),
+            1_000_000,
+        )
+    }
+
+    fn listing(dir: &Path) -> Vec<String> {
+        let mut names: Vec<_> = fs::read_dir(dir)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        names.sort();
+        names
+    }
+
+    struct Setup {
+        home: PathBuf,
+        cap: FixtureRoot,
+        outside: PathBuf,
+        unit: PathBuf,
+        context: RecoveryContext,
+    }
+    impl Setup {
+        fn new() -> Self {
+            let (home, cap) = FixtureRoot::create_test_fixture().unwrap();
+            let (outside, _) = FixtureRoot::create_test_fixture().unwrap();
+            let unit = bundle(&home, &outside.join("profile"));
+            let context =
+                RecoveryContext::initialize(&home, RecoveryPolicy::Fixture(Some(&cap))).unwrap();
+            Self {
+                home,
+                cap,
+                outside,
+                unit,
+                context,
+            }
+        }
+        fn record_dir(&self, id: &str) -> PathBuf {
+            self.home.join(".optimac-rust-recovery").join(id)
+        }
+    }
+    impl Drop for Setup {
+        fn drop(&mut self) {
+            let _ = fs::set_permissions(&self.outside, fs::Permissions::from_mode(0o700));
+            let _ = fs::remove_dir_all(&self.home);
+            let _ = fs::remove_dir_all(&self.outside);
+        }
+    }
+
+    #[test]
+    fn directory_unit_move_restore_keeps_internal_links_and_outside_target() {
+        let s = Setup::new();
+        let before = snapshot(&s.unit);
+        let outside_before = fs::symlink_metadata(s.outside.join("profile/secret")).unwrap();
+        // Any attempt to read or traverse the outside target would fail.
+        fs::set_permissions(&s.outside, fs::Permissions::from_mode(0o000)).unwrap();
+        let r = record(&s.unit);
+        let lock = s.context.lock().unwrap();
+        s.context
+            .move_directory_unit(&lock, Some(&s.cap), "1001", &r)
+            .unwrap();
+        drop(lock);
+        assert!(fs::symlink_metadata(&s.unit).is_err());
+        assert_eq!(
+            listing(&s.record_dir("1001")),
+            ["move-completed", "payload", "record.json"]
+        );
+        let stored: UnitRecord =
+            serde_json::from_slice(&fs::read(s.record_dir("1001/record.json")).unwrap()).unwrap();
+        assert_eq!(stored, r);
+        assert_eq!(snapshot(&s.record_dir("1001/payload")), before);
+        fs::set_permissions(&s.outside, fs::Permissions::from_mode(0o700)).unwrap();
+        let outside_after = fs::symlink_metadata(s.outside.join("profile/secret")).unwrap();
+        assert_eq!(
+            (
+                outside_after.ino(),
+                outside_after.mtime(),
+                outside_after.mtime_nsec()
+            ),
+            (
+                outside_before.ino(),
+                outside_before.mtime(),
+                outside_before.mtime_nsec()
+            )
+        );
+        assert_eq!(
+            fs::read(s.outside.join("profile/secret")).unwrap(),
+            b"outside"
+        );
+        assert_eq!(
+            fs::read_link(s.record_dir("1001/payload/external-profile")).unwrap(),
+            s.outside.join("profile")
+        );
+    }
+
+    #[test]
+    fn directory_unit_move_refuses_cross_volume_and_changed_identity_before_record() {
+        let s = Setup::new();
+        let before = snapshot(&s.unit);
+        let r = record(&s.unit);
+        let lock = s.context.lock().unwrap();
+        let faults = Faults {
+            device: Some(r.device.wrapping_add(1)),
+            ..Faults::default()
+        };
+        let err = s
+            .context
+            .move_directory_unit_with(&lock, Some(&s.cap), "3001", &r, faults)
+            .unwrap_err();
+        assert!(err.to_string().contains("Cross-volume"), "{err}");
+        assert!(!s.record_dir("3001").exists());
+        let mut changed = r.clone();
+        changed.inode += 1;
+        assert!(
+            s.context
+                .move_directory_unit(&lock, Some(&s.cap), "3002", &changed)
+                .is_err()
+        );
+        let mut escaped = r.clone();
+        escaped.original_path = s.outside.join("profile");
+        assert!(
+            s.context
+                .move_directory_unit(&lock, Some(&s.cap), "3003", &escaped)
+                .is_err()
+        );
+        assert!(
+            s.context
+                .move_directory_unit(&lock, None, "3004", &r)
+                .is_err()
+        );
+        let other = s.context.lock();
+        assert!(other.is_err(), "lock must stay exclusive");
+        let stray = fs::File::open(&s.home).unwrap();
+        assert!(
+            s.context
+                .move_directory_unit(&stray, Some(&s.cap), "3005", &r)
+                .is_err()
+        );
+        assert_eq!(listing(&s.home.join(".optimac-rust-recovery")), [".lock"]);
+        assert_eq!(snapshot(&s.unit), before);
+    }
 
     #[test]
     fn recovery_record_versions_load_v1_and_unit_records_fail_closed() {

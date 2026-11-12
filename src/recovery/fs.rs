@@ -91,6 +91,62 @@ pub(super) fn open_dir(path: &Path) -> io::Result<File> {
     Ok(dir)
 }
 
+/// No-follow metadata of a child entry relative to a pinned directory.
+pub(super) fn stat_at(dir: &File, name: &std::ffi::CStr) -> io::Result<libc::stat> {
+    use std::os::fd::AsRawFd;
+    let mut st = std::mem::MaybeUninit::<libc::stat>::uninit();
+    // SAFETY: valid descriptor, terminated name and a writable stat buffer.
+    let rc = unsafe {
+        libc::fstatat(
+            dir.as_raw_fd(),
+            name.as_ptr(),
+            st.as_mut_ptr(),
+            libc::AT_SYMLINK_NOFOLLOW,
+        )
+    };
+    if rc != 0 {
+        return Err(io::Error::last_os_error());
+    }
+    // SAFETY: fstatat succeeded and initialized the buffer.
+    Ok(unsafe { st.assume_init() })
+}
+
+/// Exclusive same-volume rename between pinned directories; never replaces an
+/// existing destination and never falls back to copy/delete.
+#[cfg(target_os = "macos")]
+pub(super) fn rename_at_excl(
+    source: &File,
+    source_name: &std::ffi::CStr,
+    destination: &File,
+    destination_name: &std::ffi::CStr,
+) -> io::Result<()> {
+    use std::os::fd::AsRawFd;
+    // SAFETY: valid directory descriptors and terminated names.
+    let rc = unsafe {
+        libc::renameatx_np(
+            source.as_raw_fd(),
+            source_name.as_ptr(),
+            destination.as_raw_fd(),
+            destination_name.as_ptr(),
+            libc::RENAME_EXCL,
+        )
+    };
+    if rc == 0 {
+        Ok(())
+    } else {
+        Err(io::Error::last_os_error())
+    }
+}
+#[cfg(not(target_os = "macos"))]
+pub(super) fn rename_at_excl(
+    _: &File,
+    _: &std::ffi::CStr,
+    _: &File,
+    _: &std::ffi::CStr,
+) -> io::Result<()> {
+    Err(error("Recovery mutation is macOS-only"))
+}
+
 /// No path lookup outside the already-authorized fixture directory descriptors.
 #[cfg(target_os = "macos")]
 pub(super) fn fixture_move_at(

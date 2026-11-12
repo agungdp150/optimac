@@ -40,8 +40,9 @@ impl RecoveryPolicy<'_> {
 pub struct RecoveryContext {
     pub(super) root: PathBuf,
     pub(super) directory: File,
-    fixture: bool,
-    fixture_identity: Option<(u64, u64)>,
+    pub(super) home: PathBuf,
+    pub(super) fixture: bool,
+    pub(super) fixture_identity: Option<(u64, u64)>,
 }
 
 impl RecoveryContext {
@@ -74,6 +75,7 @@ impl RecoveryContext {
             fixture_identity,
             root,
             directory,
+            home: home.to_path_buf(),
             fixture,
         })
     }
