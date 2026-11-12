@@ -23,7 +23,7 @@ use std::{
 fn action_name(action: Action) -> &'static str {
     match action {
         Action::Inspect => "Inspect directory",
-        Action::CleanPreview => "Deep Clean Preview",
+        Action::CleanPreview => "Storage inventory",
         Action::Clean => "Run cleanup",
         Action::LargeFiles => "Large Files",
         Action::Duplicates => "Duplicates",
@@ -76,7 +76,7 @@ const HOME: &[(HomeAction, &str, &str)] = &[
 ];
 fn submenu(action: HomeAction) -> &'static [Action] {
     match action {
-        HomeAction::Clean => &[Action::Clean, Action::Restore],
+        HomeAction::Clean => &[Action::CleanPreview, Action::Clean, Action::Restore],
         HomeAction::Uninstall => &[Action::Apps, Action::Restore],
         HomeAction::Analyze => &[Action::Inspect, Action::LargeFiles, Action::Artifacts],
         HomeAction::Duplicates => &[Action::Duplicates],
@@ -98,6 +98,7 @@ enum Screen {
     Scope,
 }
 struct App {
+    inventory_config: Option<optimac::cleanup::config::Config>,
     selected: Action,
     home_cursor: usize,
     submenu_cursor: usize,
@@ -129,6 +130,7 @@ struct App {
 impl App {
     fn new(root: PathBuf) -> Self {
         Self {
+            inventory_config: None,
             selected: Action::Inspect,
             home_cursor: 0,
             submenu_cursor: 0,
@@ -266,6 +268,16 @@ impl App {
                 _ => {}
             }
             return false;
+        }
+        if self.screen == Screen::Result
+            && self.selected == Action::CleanPreview
+            && key == KeyCode::Char('r')
+            && self.job.as_ref().is_none_or(|j| j.is_finished())
+        {
+            self.home_action = HomeAction::Clean;
+            self.submenu_cursor = 0;
+            self.screen = Screen::Menu;
+            return self.key(KeyCode::Enter);
         }
         if self.screen == Screen::Result
             && !self.confirm
@@ -538,6 +550,7 @@ impl App {
                 let cancel = self.cancel.clone();
                 let root = self.root.clone();
                 let selected = self.selected;
+                let inventory_config = self.inventory_config.clone();
                 self.status_snapshot = Arc::new(Mutex::new(None));
                 self.status_detail = Arc::new(Mutex::new(None));
                 let detail = self.status_detail.clone();
@@ -564,6 +577,32 @@ impl App {
                             *plan_state.lock().unwrap() = Some(plan);
                             text + "\nSelect individual files, then press r to review. Close apps using selected files first."
                         })
+                    } else if selected == Action::CleanPreview {
+                        let mut progress = |r: &optimac::cleanup::ProviderReport| {
+                            *output.lock().unwrap() = format!(
+                                "Scanning {}: {} files, {} logical bytes\nc cancels; access {}",
+                                r.provider,
+                                r.files,
+                                r.logical_bytes.unwrap_or(0),
+                                r.access
+                            );
+                        };
+                        match inventory_config.as_ref() {
+                            Some(config) => optimac::cleanup::configured_inventory_with_progress(
+                                &home,
+                                &cancel,
+                                optimac::cleanup::Budget::quick(),
+                                config,
+                                &mut progress,
+                            ),
+                            None => optimac::cleanup::inventory_with_progress(
+                                &home,
+                                &cancel,
+                                optimac::cleanup::Budget::quick(),
+                                &mut progress,
+                            ),
+                        }
+                        .map(|r| r.render())
                     } else if selected == Action::Apps || selected == Action::Restore {
                         let items = if selected == Action::Apps {
                             optimac::recovery::app_paths(&home)
@@ -658,8 +697,13 @@ fn completion(report: &Report) -> &'static str {
     }
 }
 
-pub fn run(root: PathBuf, cancel: Arc<AtomicBool>) -> io::Result<()> {
+pub fn run(
+    root: PathBuf,
+    cancel: Arc<AtomicBool>,
+    config: Option<optimac::cleanup::config::Config>,
+) -> io::Result<()> {
     let mut app = App::new(root);
+    app.inventory_config = config;
     let result = ratatui::run(|terminal| -> io::Result<()> {
         loop {
             app.initialize_cache_selection();

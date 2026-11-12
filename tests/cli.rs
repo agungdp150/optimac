@@ -87,3 +87,96 @@ fn retired_commands_explain_why() {
         assert!(String::from_utf8_lossy(&output.stderr).contains("retired"));
     }
 }
+
+#[test]
+fn cleanup_inventory_json_is_read_only_and_reports_unknown_roots() {
+    let home = std::env::temp_dir()
+        .canonicalize()
+        .unwrap()
+        .join(format!("optimac-cli-inventory-{}", std::process::id()));
+    std::fs::create_dir_all(home.join("Library/Caches/fixture")).unwrap();
+    let file = home.join("Library/Caches/fixture/data");
+    std::fs::write(&file, b"unchanged").unwrap();
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_optimac"))
+        .args(["clean", "scan", "--json"])
+        .env("HOME", &home)
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{:?}", output);
+    let value: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(value["read_only"], true);
+    assert!(
+        value["providers"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|r| r["provider"] == "app-user-caches/fixture" && r["logical_bytes"] == 9)
+    );
+    assert_eq!(std::fs::read(&file).unwrap(), b"unchanged");
+    std::fs::remove_dir_all(home).unwrap();
+}
+
+#[test]
+fn configured_inventory_applies_scopes_and_exclusions() {
+    let home = std::env::temp_dir()
+        .canonicalize()
+        .unwrap()
+        .join(format!("optimac-config-cli-{}", std::process::id()));
+    for dir in [
+        "files/keep",
+        "files/private",
+        "files/local",
+        "files/cache.tmp",
+    ] {
+        std::fs::create_dir_all(home.join(dir)).unwrap();
+        std::fs::write(home.join(dir).join("item"), b"12345").unwrap();
+    }
+    let config = home.join("rules.toml");
+    let text = r#"schema_version = 2
+[scope]
+file_roots = ["~/files"]
+exclude_paths = ["~/files/private"]
+[[rule]]
+id = "large-old-files"
+enabled = true
+scope = "files"
+exclude_paths = ["~/files/local"]
+exclude_name_patterns = ["*.tmp"]
+"#;
+    std::fs::write(&config, text).unwrap();
+    let run = || {
+        Command::new(env!("CARGO_BIN_EXE_optimac"))
+            .args(["clean", "scan", "--json", "--config"])
+            .arg(&config)
+            .env("HOME", &home)
+            .output()
+            .unwrap()
+    };
+    let result = run();
+    assert!(
+        result.status.success(),
+        "{}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+    let report: serde_json::Value = serde_json::from_slice(&result.stdout).unwrap();
+    assert_eq!(report["providers"][0]["logical_bytes"], 5);
+    assert_eq!(report["providers"].as_array().unwrap().len(), 1);
+    std::fs::write(
+        &config,
+        text.replace(
+            "scope = \"files\"",
+            "scope = \"files\"\nscan_roots = [\"~/outside\"]",
+        ),
+    )
+    .unwrap();
+    let result = run();
+    assert!(!result.status.success());
+    assert!(String::from_utf8_lossy(&result.stderr).contains("outside approved scope"));
+    for dir in ["files/private", "files/local", "files/cache.tmp"] {
+        assert_eq!(
+            std::fs::read(home.join(dir).join("item")).unwrap(),
+            b"12345"
+        );
+    }
+    std::fs::remove_dir_all(home).unwrap();
+}

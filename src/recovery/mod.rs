@@ -1,5 +1,6 @@
 #[path = "fs.rs"]
 mod fs_ops;
+pub mod purge;
 use fs_ops::{move_exclusive, operation_lock, sync_dir};
 // Conservative, journaled, same-volume cache cleanup. Never permanently deletes.
 use serde::{Deserialize, Serialize};

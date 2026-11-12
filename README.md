@@ -119,7 +119,9 @@ optimac inspect ~/Downloads      # Metadata summary
 optimac analyze ~/Downloads      # Largest scanned files
 optimac duplicates ~/Downloads   # Exact-content comparisons
 optimac artifacts .              # Project artifact candidates
-optimac clean                    # Cleanup preview
+optimac clean                    # Read-only storage inventory
+optimac clean scan --json        # Structured inventory and coverage status
+optimac clean scan --deep        # Larger read-only scan budgets
 optimac status                   # Text system report
 optimac doctor                   # Security checks
 optimac log                      # Rust recovery record inventory
@@ -144,8 +146,8 @@ checks were insufficient.
    will not overwrite an existing destination.
 
 > **Moving files to recovery does not free disk space.** The data remains on the
-> same volume so it can be restored. OptiMac does not currently provide permanent
-> deletion or an empty-recovery action.
+> same volume so it can be restored. The CLI now offers an explicitly confirmed purge for individual regular-file
+> recovery payloads; bulk and directory purge remain unsupported.
 
 Cleanup uses reviewed plans, checks file identity and whether files appear in use,
 records recovery information, and refuses a copy-and-delete fallback. It skips
@@ -206,3 +208,88 @@ See the [roadmap](ROADMAP.md) for planned work and the
 ## License
 
 [MIT](LICENSE) © 2026 Luceid
+
+### Storage inventory (first implementation slice)
+
+Clean → Storage inventory and `clean scan` inspect common developer/model paths,
+non-Apple children of Library/Caches, and sandbox/group-container cache paths.
+Reports distinguish logical bytes, allocated estimates, absent roots, denied access,
+and partial scans. Exit status 1 means incomplete inventory; 2 means invalid usage.
+No inventory result selects files or authorizes cleanup. Existing Run cleanup
+continues to use its separate recovery-only review.
+
+This is default-location discovery, not complete provider support: custom tool
+configuration, executable enrollment, native cleanup,
+project discovery and adapter certification remain pending. The example rules file is loaded only when passed with `--config`; all of its rules start disabled. Apple generic cache directories are excluded. Allocated sizes may
+share APFS extents and do not predict reclaimed space. Scans are metadata-only,
+with cooperative budgets; filesystem calls may exceed those budgets.
+
+### Permanently purge an individual recovery file
+
+Run `optimac log` to find a recovery ID, then `optimac recovery purge <id>`
+in an interactive terminal. Review the payload and type the exact requested
+confirmation. This permanently removes a regular-file payload and retains its
+journal. App bundles, directories, hard links and changed identities are refused.
+There is no unattended confirmation flag or bulk purge. An interrupted intent
+requires inspection; the command does not automatically retry it. Physical space
+reclaimed can differ from logical bytes due to snapshots and shared storage.
+
+### Configured read-only scans
+
+```sh
+optimac config check docs/rules.example.toml
+optimac clean scan --config my-rules.toml --json
+```
+
+Minimal configuration:
+
+```toml
+schema_version = 2
+
+[scope]
+file_roots = ["~/Downloads"]
+exclude_paths = ["~/Downloads/keep"]
+
+[[rule]]
+id = "large-old-files"
+enabled = true
+scope = "files"
+scan_roots = []
+exclude_paths = ["~/Downloads/work"]
+exclude_name_patterns = ["*.tmp"]
+```
+
+Only enabled rules are scanned when `--config` is provided. Empty `scan_roots`
+inherits `file_roots` for file rules or `project_roots` for project rules;
+empty effective roots scan nothing. Nonempty rule roots must be within their
+approved scope. Provider-scoped rules can narrow their resolved roots, including supported environment overrides, but cannot
+redirect them to unrelated directories. Symlink roots/ancestors are refused.
+Global and per-rule exclusions are combined and applied before traversal.
+Patterns match complete basename components using case-sensitive `*` and `?`.
+
+`project-artifacts` discovers Cargo target, Node node_modules/.next, SwiftPM .build and Gradle build directories only when their parent contains a matching project marker. These are inventory candidates, not certified disposable outputs. `large-old-files` and `duplicates` report metadata totals; age/size eligibility and duplicate hashing remain unavailable through this interface. Unsupported providers report a
+blocked status. Configuration operation settings never execute cleanup.
+Use `optimac ui --config my-rules.toml` to apply the same rules to Clean → Storage inventory. Configured Quick/Deep entry and time budgets are applied in both interfaces. Other schema settings such as UI pagination and recovery policies are still validated without being applied.
+
+Use `optimac recovery inspect <id>` to inspect an interrupted purge. It reports
+payload presence and journal consistency without retrying deletion. A missing
+payload without a completion record is reported as requiring reconciliation;
+its absence is not assumed to prove a successful purge. This inspection may
+create the recovery lock/root if missing, but never changes payloads or intents.
+
+### Provider capabilities
+
+`optimac clean providers` lists the complete proposed provider catalog. Add
+`--json` for schema-versioned capability data. Every entry currently has an empty
+tested-version list and mutation disabled; inventory/guidance support must not be
+interpreted as certification to run the example's proposed cleanup operation.
+
+Inventory reserves entry/time shares for later providers and roots. CLI progress
+uses stderr only when it is a terminal; JSON stdout remains machine-readable.
+The TUI displays cooperative progress during scans. Reports include access
+observations and the full provider capability catalog. A readable root does not
+prove that all descendants are accessible. Blocking filesystem calls can exceed
+scan and progress deadlines.
+
+Run `cargo run --release --locked --example inventory_benchmark` to benchmark
+4,000 disposable fixture files without scanning real caches.

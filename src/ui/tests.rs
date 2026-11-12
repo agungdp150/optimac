@@ -96,7 +96,7 @@ fn home_and_submenus_map_without_launching_mutations() {
     assert_eq!(HOME.len(), 6);
     assert_eq!(
         submenu(HomeAction::Clean),
-        &[Action::Clean, Action::Restore]
+        &[Action::CleanPreview, Action::Clean, Action::Restore]
     );
     assert_eq!(
         submenu(HomeAction::Uninstall),
@@ -253,4 +253,23 @@ fn status_refresh_keeps_previous_values_and_does_not_overlap() {
     assert!(screen.contains("Refreshing"));
     tx.send(()).unwrap();
     app.job.take().unwrap().join().unwrap();
+}
+
+#[test]
+fn configured_inventory_runs_in_menu_without_default_roots() {
+    let mut app = App::new(std::path::PathBuf::from("."));
+    app.inventory_config =
+        Some(optimac::cleanup::config::Config::parse("schema_version=2").unwrap());
+    app.screen = Screen::Menu;
+    app.selected = Action::CleanPreview;
+    app.key(KeyCode::Enter);
+    if let Some(job) = app.job.take() {
+        job.join().unwrap();
+    }
+    let output = app.output.lock().unwrap();
+    assert!(
+        output.contains("Configured read-only inventory"),
+        "{output}"
+    );
+    assert!(!output.contains("Default-location hints"));
 }

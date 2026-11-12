@@ -16,7 +16,7 @@ fn main() -> ExitCode {
     }
     if args == ["--help"] || args == ["help"] || args == ["-h"] {
         println!(
-            "OptiMac: Rust edition (reviewed cleanup available in the menu)\nUsage: optimac inspect <directory> | ui <directory>\nMetadata only; at most 100000 entries and 32 directory levels.\nLogical bytes are not reclaimable space. 30-second scan budget. Use local test directories.\nRead-only commands: analyze, duplicates, artifacts [directory]; clean (preview), apps (inventory), updates, login, space, doctor, optimize (diagnostics), status."
+            "OptiMac: Rust edition (reviewed cleanup available in the menu)\nUsage: optimac inspect <directory> | ui <directory>\nMetadata only; at most 100000 entries and 32 directory levels.\nLogical bytes are not reclaimable space. 30-second scan budget. Use local test directories.\nRead-only commands: analyze, duplicates, artifacts [directory]; clean [scan [--json] [--deep]] (inventory), apps (inventory), updates, login, space, doctor, optimize (diagnostics), status."
         );
         return ExitCode::SUCCESS;
     }
@@ -26,7 +26,28 @@ fn main() -> ExitCode {
         eprintln!("Cannot install cancellation handler: {error}");
         return ExitCode::FAILURE;
     }
-    if args.is_empty() || (args.len() <= 2 && (args[0] == "ui" || args[0] == "menu")) {
+    if args.is_empty() || args.first().is_some_and(|a| a == "ui" || a == "menu") {
+        let mut ui_root = None;
+        let mut config = None;
+        let mut cursor = 1;
+        while cursor < args.len() {
+            if args[cursor] == "--config" && cursor + 1 < args.len() && config.is_none() {
+                match optimac::cleanup::config::Config::load(Path::new(&args[cursor + 1])) {
+                    Ok(c) => config = Some(c),
+                    Err(e) => {
+                        eprintln!("Invalid configuration: {e}");
+                        return ExitCode::from(2);
+                    }
+                }
+                cursor += 2;
+            } else if !args[cursor].to_string_lossy().starts_with('-') && ui_root.is_none() {
+                ui_root = Some(std::path::PathBuf::from(&args[cursor]));
+                cursor += 1;
+            } else {
+                eprintln!("Usage: optimac ui [directory] [--config PATH]");
+                return ExitCode::from(2);
+            }
+        }
         use std::io::IsTerminal;
         if !std::io::stdin().is_terminal() || !std::io::stdout().is_terminal() {
             eprintln!(
@@ -34,11 +55,8 @@ fn main() -> ExitCode {
             );
             return ExitCode::from(2);
         }
-        let root = args
-            .get(1)
-            .map(std::path::PathBuf::from)
-            .unwrap_or_else(|| ".".into());
-        return match ui::run(root, cancel) {
+        let root = ui_root.unwrap_or_else(|| ".".into());
+        return match ui::run(root, cancel, config) {
             Ok(()) => ExitCode::SUCCESS,
             Err(e) => {
                 eprintln!("UI failed: {e}");
@@ -63,6 +81,181 @@ fn main() -> ExitCode {
         };
     }
     let command = args.first().and_then(|a| a.to_str()).unwrap_or("");
+    if command == "config" && args.get(1).is_some_and(|a| a == "check") {
+        if args.len() != 3 {
+            eprintln!("Usage: optimac config check <path>");
+            return ExitCode::from(2);
+        }
+        return match optimac::cleanup::config::Config::load(Path::new(&args[2])) {
+            Ok(_) => {
+                println!("Valid schema-v2 configuration. Validation only; no rules executed.");
+                ExitCode::SUCCESS
+            }
+            Err(e) => {
+                eprintln!("Invalid configuration: {e}");
+                ExitCode::from(2)
+            }
+        };
+    }
+    if command == "recovery" {
+        use std::io::{IsTerminal, Write};
+        if args.len() == 3 && args[1] == "inspect" {
+            let result = std::env::var_os("HOME")
+                .ok_or_else(|| std::io::Error::other("HOME unavailable"))
+                .and_then(|h| {
+                    optimac::recovery::purge::inspect(Path::new(&h), args[2].to_str().unwrap_or(""))
+                });
+            return match result {
+                Ok(s) => {
+                    println!("{s}");
+                    ExitCode::SUCCESS
+                }
+                Err(e) => {
+                    eprintln!("{e}");
+                    ExitCode::FAILURE
+                }
+            };
+        }
+        if args.len() != 3 || args[1] != "purge" {
+            eprintln!("Usage: optimac recovery purge <id>; regular-file payloads only");
+            return ExitCode::from(2);
+        }
+        if !std::io::stdin().is_terminal() || !std::io::stdout().is_terminal() {
+            eprintln!("Permanent purge requires an interactive terminal");
+            return ExitCode::from(2);
+        }
+        let result = (|| -> std::io::Result<String> {
+            let home = std::env::var_os("HOME")
+                .ok_or_else(|| std::io::Error::other("HOME unavailable"))?;
+            let id = args[2]
+                .to_str()
+                .ok_or_else(|| std::io::Error::other("Invalid ID"))?;
+            let plan = optimac::recovery::purge::plan(Path::new(&home), id)?;
+            println!("{}", plan.describe());
+            print!("Type DELETE {id} to confirm, or Enter to cancel: ");
+            std::io::stdout().flush()?;
+            let mut answer = String::new();
+            std::io::stdin().read_line(&mut answer)?;
+            if answer.trim() != format!("DELETE {id}") {
+                return Ok("Cancelled; no data changed".into());
+            }
+            optimac::recovery::purge::execute(Path::new(&home), &plan, &cancel)
+        })();
+        return match result {
+            Ok(s) => {
+                println!("{s}");
+                ExitCode::SUCCESS
+            }
+            Err(e) => {
+                eprintln!("{e}");
+                ExitCode::FAILURE
+            }
+        };
+    }
+    if command == "clean" {
+        let tail = &args[1..];
+        if tail.first().is_some_and(|arg| arg == "providers") {
+            if tail.len() > 2 || (tail.len() == 2 && tail[1] != "--json") {
+                eprintln!("Usage: optimac clean providers [--json]");
+                return ExitCode::from(2);
+            }
+            let catalog = optimac::cleanup::catalog();
+            if tail.len() == 2 {
+                println!(
+                    "{}",
+                    serde_json::json!({"schema_version": 1, "providers": catalog})
+                );
+            } else {
+                for provider in catalog {
+                    println!(
+                        "{}: {} ({}, {}); mutation disabled",
+                        provider.provider, provider.certification, provider.class, provider.risk
+                    );
+                }
+            }
+            return ExitCode::SUCCESS;
+        }
+        let mut config_path = None;
+        let mut valid = tail.is_empty() || tail[0] == "scan" || tail[0] == "retry";
+        let mut i = 1;
+        while i < tail.len() {
+            if tail[i] == "--config" && config_path.is_none() && i + 1 < tail.len() {
+                config_path = Some(&tail[i + 1]);
+                i += 2;
+            } else if tail[i] == "--json" || tail[i] == "--deep" {
+                i += 1;
+            } else {
+                valid = false;
+                break;
+            }
+        }
+        if !valid {
+            eprintln!(
+                "Execution is not yet ported; usage: optimac clean scan [--config PATH] [--json] [--deep]"
+            );
+            return ExitCode::from(2);
+        }
+        let Some(home) = std::env::var_os("HOME") else {
+            eprintln!("HOME unavailable");
+            return ExitCode::FAILURE;
+        };
+        let budget = if tail.iter().any(|a| a == "--deep") {
+            optimac::cleanup::Budget::deep()
+        } else {
+            optimac::cleanup::Budget::quick()
+        };
+        let mut progress = |r: &optimac::cleanup::ProviderReport| {
+            if std::io::IsTerminal::is_terminal(&std::io::stderr()) {
+                eprint!(
+                    "\rScanning {}: {} files                    ",
+                    r.provider, r.files
+                );
+            }
+        };
+        let result = if let Some(path) = config_path {
+            match optimac::cleanup::config::Config::load(Path::new(path)) {
+                Ok(config) => optimac::cleanup::configured_inventory_with_progress(
+                    Path::new(&home),
+                    &cancel,
+                    budget,
+                    &config,
+                    &mut progress,
+                ),
+                Err(e) => {
+                    eprintln!("Invalid configuration: {e}");
+                    return ExitCode::from(2);
+                }
+            }
+        } else {
+            optimac::cleanup::inventory_with_progress(
+                Path::new(&home),
+                &cancel,
+                budget,
+                &mut progress,
+            )
+        };
+        return match result {
+            Ok(report) => {
+                if tail.iter().any(|a| a == "--json") {
+                    println!(
+                        "{}",
+                        serde_json::to_string_pretty(&report).expect("serializable report")
+                    );
+                } else {
+                    println!("{}", report.render());
+                }
+                if report.complete {
+                    ExitCode::SUCCESS
+                } else {
+                    ExitCode::from(1)
+                }
+            }
+            Err(e) => {
+                eprintln!("Inventory failed: {e}");
+                ExitCode::FAILURE
+            }
+        };
+    }
     if matches!(command, "threats" | "scan-threats" | "orphans") {
         eprintln!(
             "This feature was retired: filename matches and folder listings cannot reliably establish threats or orphaned data."

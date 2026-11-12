@@ -1,4 +1,4 @@
-mod process;
+pub mod process;
 pub mod status;
 pub(crate) use process::command;
 use process::commands;
@@ -52,7 +52,10 @@ impl Action {
 }
 pub fn description(index: Action) -> &'static str {
     match index {
-        Action::CleanPreview | Action::Clean => {
+        Action::CleanPreview => {
+            "Read-only cache and development storage inventory; no files selected or removed."
+        }
+        Action::Clean => {
             "Review Documents, Programming, Browser, Media and other groups. Personal files must be individually selected before confirmation."
         }
         Action::LargeFiles => {
@@ -273,7 +276,10 @@ pub(crate) fn review_paths(root: &Path, cancel: &AtomicBool) -> io::Result<(Vec<
 pub fn run(index: Action, root: &Path, cancel: &AtomicBool) -> io::Result<String> {
     let h = home()?;
     match index {
-        Action::CleanPreview | Action::Clean => {
+        Action::CleanPreview => {
+            Ok(crate::cleanup::inventory(&h, cancel, crate::cleanup::Budget::quick())?.render())
+        }
+        Action::Clean => {
             let plan = crate::recovery::review_files(&h, root, cancel)?;
             Ok(format!(
                 "Grouped file review only. Select individual files in the Run cleanup menu to perform recoverable moves.\n{}",

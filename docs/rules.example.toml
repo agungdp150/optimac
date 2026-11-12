@@ -1,0 +1,1305 @@
+# User overlay: load explicitly with --config. All rules start disabled.
+# Configured scans are read-only; proposed operations do not grant execution.
+# Provider metadata is compiled, not user-overridable: policy/source/version matrix,
+# verification date, executable trust, activity checks, regeneration and reconciliation.
+# Exact-version mutation certification is empty until adapters are tested.
+# New rules default to inventory; operations are proposals, not execution grants.
+# schema_version must be 2. Unknown fields/IDs, duplicates and unsafe values fail.
+# operation: inventory | recovery | permanent | guidance
+# age_basis: mtime_hint | not_applicable (requires explicit min_age_days = 0)
+# size_basis: aggregate_review_unit; on_denied: report_partial
+# risk: conditional_cache | review | protected; class mapping: see adapter contract.
+# Basename matcher: case-sensitive whole component; only * and ? wildcards.
+# Dot is literal; reject slash, **, brackets, braces and escapes; no shell expansion.
+# Bytes are decimal. Log thresholds apply to the aggregate directory/rotation group.
+# file_removal_default is the direct-file action default, never a plan override.
+# high_risk requires named-object plus irreversible-consequence confirmation.
+# auto_expire_days must be 0; purge_requires_confirmation must be true in v2.
+# Example scope: with global project_roots = ["~/Projects"], a rule may use
+# scan_roots = ["~/Projects/demo"]. ["~/Documents"] must be rejected as outside scope.
+schema_version = 2
+
+[defaults]
+enabled = false
+auto_select = false
+operation = "inventory"
+file_removal_default = "recovery"
+require_confirmation = true
+allow_sudo = false
+follow_symlinks = false
+skip_cloud_and_network = true
+unknown_activity = "block"
+min_age_days = 30
+age_basis = "mtime_hint"
+min_size_bytes = 10000000
+size_basis = "aggregate_review_unit"
+
+[scope]
+project_roots = []
+file_roots = []
+exclude_paths = []
+
+[access]
+preflight = true
+on_denied = "report_partial"
+show_permission_guidance = true
+
+[recovery]
+warn_threshold_bytes = 10000000000
+purge_requires_confirmation = true
+auto_expire_days = 0
+
+[scan]
+quick_max_entries_per_provider = 10000
+quick_max_seconds_per_provider = 2
+quick_max_seconds_global = 30
+deep_max_entries_per_provider = 250000
+deep_max_entries_global = 1000000
+deep_max_seconds_global = 120
+duplicate_max_read_bytes = 10000000000
+duplicate_max_seconds_global = 60
+
+[ui]
+inventory_page_size = 50
+show_all_inventory_default = true
+
+[[rule]]
+id = "homebrew"
+provider = "homebrew"
+risk = "conditional_cache"
+enabled = false
+operation = "permanent"
+class = "rebuildable_cache"
+scope = "provider"
+scan_roots = []
+exclude_paths = []
+exclude_name_patterns = []
+high_risk = false
+
+[[rule]]
+id = "npm"
+provider = "npm"
+risk = "conditional_cache"
+enabled = false
+operation = "permanent"
+class = "rebuildable_cache"
+scope = "provider"
+scan_roots = []
+exclude_paths = []
+exclude_name_patterns = []
+high_risk = false
+
+[[rule]]
+id = "yarn"
+provider = "yarn"
+risk = "conditional_cache"
+enabled = false
+operation = "permanent"
+class = "rebuildable_cache"
+scope = "provider"
+scan_roots = []
+exclude_paths = []
+exclude_name_patterns = []
+high_risk = false
+
+[[rule]]
+id = "pip"
+provider = "pip"
+risk = "conditional_cache"
+enabled = false
+operation = "permanent"
+class = "rebuildable_cache"
+scope = "provider"
+scan_roots = []
+exclude_paths = []
+exclude_name_patterns = []
+high_risk = false
+
+[[rule]]
+id = "poetry"
+provider = "poetry"
+risk = "conditional_cache"
+enabled = false
+operation = "permanent"
+class = "rebuildable_cache"
+scope = "provider"
+scan_roots = []
+exclude_paths = []
+exclude_name_patterns = []
+high_risk = false
+
+[[rule]]
+id = "go-build"
+provider = "go-build"
+risk = "conditional_cache"
+enabled = false
+operation = "permanent"
+class = "rebuildable_cache"
+scope = "provider"
+scan_roots = []
+exclude_paths = []
+exclude_name_patterns = []
+high_risk = false
+
+[[rule]]
+id = "cocoapods"
+provider = "cocoapods"
+risk = "conditional_cache"
+enabled = false
+operation = "permanent"
+class = "rebuildable_cache"
+scope = "provider"
+scan_roots = []
+exclude_paths = []
+exclude_name_patterns = []
+high_risk = false
+
+[[rule]]
+id = "composer"
+provider = "composer"
+risk = "conditional_cache"
+enabled = false
+operation = "permanent"
+class = "rebuildable_cache"
+scope = "provider"
+scan_roots = []
+exclude_paths = []
+exclude_name_patterns = []
+high_risk = false
+
+[[rule]]
+id = "cargo-registry"
+provider = "cargo-registry"
+risk = "conditional_cache"
+enabled = false
+operation = "inventory"
+class = "rebuildable_cache"
+scope = "provider"
+scan_roots = []
+exclude_paths = []
+exclude_name_patterns = []
+high_risk = false
+
+[[rule]]
+id = "uv-cache"
+provider = "uv-cache"
+risk = "review"
+enabled = false
+operation = "inventory"
+class = "rebuildable_cache"
+scope = "provider"
+scan_roots = []
+exclude_paths = []
+exclude_name_patterns = []
+high_risk = false
+
+[[rule]]
+id = "xcode-derived-data"
+provider = "xcode-derived-data"
+risk = "conditional_cache"
+enabled = false
+operation = "recovery"
+class = "generated_output"
+scope = "provider"
+scan_roots = []
+exclude_paths = []
+exclude_name_patterns = []
+high_risk = false
+
+[[rule]]
+id = "safari-cache"
+provider = "safari-cache"
+risk = "conditional_cache"
+enabled = false
+operation = "inventory"
+class = "rebuildable_cache"
+scope = "provider"
+scan_roots = []
+exclude_paths = []
+exclude_name_patterns = []
+high_risk = false
+
+[[rule]]
+id = "chrome-cache"
+provider = "chrome-cache"
+risk = "conditional_cache"
+enabled = false
+operation = "inventory"
+class = "rebuildable_cache"
+scope = "provider"
+scan_roots = []
+exclude_paths = []
+exclude_name_patterns = []
+high_risk = false
+
+[[rule]]
+id = "firefox-cache"
+provider = "firefox-cache"
+risk = "conditional_cache"
+enabled = false
+operation = "inventory"
+class = "rebuildable_cache"
+scope = "provider"
+scan_roots = []
+exclude_paths = []
+exclude_name_patterns = []
+high_risk = false
+
+[[rule]]
+id = "arc-cache"
+provider = "arc-cache"
+risk = "conditional_cache"
+enabled = false
+operation = "inventory"
+class = "rebuildable_cache"
+scope = "provider"
+scan_roots = []
+exclude_paths = []
+exclude_name_patterns = []
+high_risk = false
+
+[[rule]]
+id = "slack-cache"
+provider = "slack-cache"
+risk = "conditional_cache"
+enabled = false
+operation = "inventory"
+class = "rebuildable_cache"
+scope = "provider"
+scan_roots = []
+exclude_paths = []
+exclude_name_patterns = []
+high_risk = false
+
+[[rule]]
+id = "discord-cache"
+provider = "discord-cache"
+risk = "conditional_cache"
+enabled = false
+operation = "inventory"
+class = "rebuildable_cache"
+scope = "provider"
+scan_roots = []
+exclude_paths = []
+exclude_name_patterns = []
+high_risk = false
+
+[[rule]]
+id = "vscode-cache"
+provider = "vscode-cache"
+risk = "conditional_cache"
+enabled = false
+operation = "inventory"
+class = "rebuildable_cache"
+scope = "provider"
+scan_roots = []
+exclude_paths = []
+exclude_name_patterns = []
+high_risk = false
+
+[[rule]]
+id = "spotify-cache"
+provider = "spotify-cache"
+risk = "conditional_cache"
+enabled = false
+operation = "inventory"
+class = "rebuildable_cache"
+scope = "provider"
+scan_roots = []
+exclude_paths = []
+exclude_name_patterns = []
+high_risk = false
+
+[[rule]]
+id = "notion-cache"
+provider = "notion-cache"
+risk = "conditional_cache"
+enabled = false
+operation = "inventory"
+class = "rebuildable_cache"
+scope = "provider"
+scan_roots = []
+exclude_paths = []
+exclude_name_patterns = []
+high_risk = false
+
+[[rule]]
+id = "swiftpm-cache"
+provider = "swiftpm-cache"
+risk = "review"
+enabled = false
+operation = "inventory"
+class = "rebuildable_cache"
+scope = "provider"
+scan_roots = []
+exclude_paths = []
+exclude_name_patterns = []
+high_risk = false
+
+[[rule]]
+id = "go-modules"
+provider = "go-modules"
+risk = "review"
+enabled = false
+operation = "permanent"
+class = "rebuildable_cache"
+scope = "provider"
+scan_roots = []
+exclude_paths = []
+exclude_name_patterns = []
+high_risk = false
+
+[[rule]]
+id = "gradle-cache"
+provider = "gradle-cache"
+risk = "review"
+enabled = false
+operation = "guidance"
+class = "rebuildable_cache"
+scope = "provider"
+scan_roots = []
+exclude_paths = []
+exclude_name_patterns = []
+age_basis = "not_applicable"
+min_age_days = 0
+high_risk = false
+
+[[rule]]
+id = "maven-repository"
+provider = "maven-repository"
+risk = "review"
+enabled = false
+operation = "inventory"
+class = "rebuildable_cache"
+scope = "provider"
+scan_roots = []
+exclude_paths = []
+exclude_name_patterns = []
+high_risk = false
+
+[[rule]]
+id = "conda-packages"
+provider = "conda-packages"
+risk = "review"
+enabled = false
+operation = "guidance"
+class = "rebuildable_cache"
+scope = "provider"
+scan_roots = []
+exclude_paths = []
+exclude_name_patterns = []
+age_basis = "not_applicable"
+min_age_days = 0
+high_risk = false
+
+[[rule]]
+id = "conda-archives"
+provider = "conda-archives"
+risk = "review"
+enabled = false
+operation = "inventory"
+class = "rebuildable_cache"
+scope = "provider"
+scan_roots = []
+exclude_paths = []
+exclude_name_patterns = []
+high_risk = false
+
+[[rule]]
+id = "crash-reports"
+provider = "crash-reports"
+risk = "review"
+enabled = false
+operation = "recovery"
+class = "logs"
+scope = "provider"
+scan_roots = []
+exclude_paths = []
+exclude_name_patterns = []
+high_risk = false
+
+[[rule]]
+id = "app-logs"
+provider = "app-logs"
+risk = "review"
+enabled = false
+operation = "recovery"
+class = "logs"
+scope = "provider"
+scan_roots = []
+exclude_paths = []
+exclude_name_patterns = []
+high_risk = false
+
+[[rule]]
+id = "project-artifacts"
+provider = "project-artifacts"
+risk = "review"
+enabled = false
+operation = "recovery"
+min_age_days = 90
+min_size_bytes = 100000000
+class = "generated_output"
+scope = "projects"
+scan_roots = []
+exclude_paths = []
+exclude_name_patterns = []
+high_risk = false
+
+[[rule]]
+id = "app-leftovers"
+provider = "app-leftovers"
+risk = "review"
+enabled = false
+operation = "inventory"
+class = "user_state"
+scope = "provider"
+scan_roots = []
+exclude_paths = []
+exclude_name_patterns = []
+high_risk = false
+
+[[rule]]
+id = "download-installers"
+provider = "download-installers"
+risk = "review"
+enabled = false
+operation = "recovery"
+min_age_days = 90
+class = "unknown_content"
+scope = "provider"
+scan_roots = []
+exclude_paths = []
+exclude_name_patterns = []
+high_risk = false
+
+[[rule]]
+id = "ios-backups"
+provider = "ios-backups"
+risk = "review"
+enabled = false
+operation = "guidance"
+class = "user_state"
+scope = "provider"
+scan_roots = []
+exclude_paths = []
+exclude_name_patterns = []
+age_basis = "not_applicable"
+min_age_days = 0
+high_risk = false
+
+[[rule]]
+id = "xcode-archives"
+provider = "xcode-archives"
+risk = "review"
+enabled = false
+operation = "guidance"
+class = "user_state"
+scope = "provider"
+scan_roots = []
+exclude_paths = []
+exclude_name_patterns = []
+age_basis = "not_applicable"
+min_age_days = 0
+high_risk = false
+
+[[rule]]
+id = "xcode-device-support"
+provider = "xcode-device-support"
+risk = "review"
+enabled = false
+operation = "guidance"
+class = "user_state"
+scope = "provider"
+scan_roots = []
+exclude_paths = []
+exclude_name_patterns = []
+age_basis = "not_applicable"
+min_age_days = 0
+high_risk = false
+
+[[rule]]
+id = "unavailable-simulators"
+provider = "unavailable-simulators"
+risk = "review"
+enabled = false
+operation = "guidance"
+class = "user_state"
+scope = "provider"
+scan_roots = []
+exclude_paths = []
+exclude_name_patterns = []
+age_basis = "not_applicable"
+min_age_days = 0
+high_risk = false
+
+[[rule]]
+id = "simulator-reset"
+provider = "simulator-reset"
+risk = "review"
+enabled = false
+operation = "guidance"
+class = "user_state"
+scope = "provider"
+scan_roots = []
+exclude_paths = []
+exclude_name_patterns = []
+age_basis = "not_applicable"
+min_age_days = 0
+high_risk = false
+
+[[rule]]
+id = "simulator-runtimes"
+provider = "simulator-runtimes"
+risk = "review"
+enabled = false
+operation = "guidance"
+class = "user_state"
+scope = "provider"
+scan_roots = []
+exclude_paths = []
+exclude_name_patterns = []
+age_basis = "not_applicable"
+min_age_days = 0
+high_risk = false
+
+[[rule]]
+id = "docker-dangling-images"
+provider = "docker-dangling-images"
+risk = "review"
+enabled = false
+operation = "permanent"
+class = "rebuildable_cache"
+scope = "provider"
+scan_roots = []
+exclude_paths = []
+exclude_name_patterns = []
+high_risk = false
+[rule.docker]
+context = "current"
+endpoint_policy = "local_desktop_only"
+allow_remote = false
+
+[[rule]]
+id = "docker-stopped-containers"
+provider = "docker-stopped-containers"
+risk = "review"
+enabled = false
+operation = "permanent"
+class = "user_state"
+scope = "provider"
+scan_roots = []
+exclude_paths = []
+exclude_name_patterns = []
+high_risk = true
+[rule.docker]
+context = "current"
+endpoint_policy = "local_desktop_only"
+allow_remote = false
+
+[[rule]]
+id = "docker-build-cache"
+provider = "docker-build-cache"
+risk = "review"
+enabled = false
+operation = "inventory"
+class = "rebuildable_cache"
+scope = "provider"
+scan_roots = []
+exclude_paths = []
+exclude_name_patterns = []
+high_risk = false
+[rule.docker]
+context = "current"
+endpoint_policy = "local_desktop_only"
+allow_remote = false
+
+[[rule]]
+id = "adobe-media-cache"
+provider = "adobe-media-cache"
+risk = "review"
+enabled = false
+operation = "guidance"
+class = "rebuildable_cache"
+scope = "provider"
+scan_roots = []
+exclude_paths = []
+exclude_name_patterns = []
+age_basis = "not_applicable"
+min_age_days = 0
+high_risk = false
+
+[[rule]]
+id = "dropbox-cache"
+provider = "dropbox-cache"
+risk = "review"
+enabled = false
+operation = "guidance"
+class = "rebuildable_cache"
+scope = "provider"
+scan_roots = []
+exclude_paths = []
+exclude_name_patterns = []
+age_basis = "not_applicable"
+min_age_days = 0
+high_risk = false
+
+[[rule]]
+id = "android-cache"
+provider = "android-cache"
+risk = "review"
+enabled = false
+operation = "guidance"
+class = "rebuildable_cache"
+scope = "provider"
+scan_roots = []
+exclude_paths = []
+exclude_name_patterns = []
+age_basis = "not_applicable"
+min_age_days = 0
+high_risk = false
+
+[[rule]]
+id = "steam-download-cache"
+provider = "steam-download-cache"
+risk = "review"
+enabled = false
+operation = "guidance"
+class = "rebuildable_cache"
+scope = "provider"
+scan_roots = []
+exclude_paths = []
+exclude_name_patterns = []
+age_basis = "not_applicable"
+min_age_days = 0
+high_risk = false
+
+[[rule]]
+id = "teams-cache"
+provider = "teams-cache"
+risk = "review"
+enabled = false
+operation = "guidance"
+class = "rebuildable_cache"
+scope = "provider"
+scan_roots = []
+exclude_paths = []
+exclude_name_patterns = []
+age_basis = "not_applicable"
+min_age_days = 0
+high_risk = false
+
+[[rule]]
+id = "local-trash"
+provider = "local-trash"
+risk = "review"
+enabled = false
+operation = "permanent"
+age_basis = "not_applicable"
+class = "holding_area"
+scope = "provider"
+scan_roots = []
+exclude_paths = []
+exclude_name_patterns = []
+min_age_days = 0
+high_risk = true
+
+[[rule]]
+id = "optimac-recovery"
+provider = "optimac-recovery"
+risk = "review"
+enabled = false
+operation = "permanent"
+age_basis = "not_applicable"
+class = "holding_area"
+scope = "provider"
+scan_roots = []
+exclude_paths = []
+exclude_name_patterns = []
+min_age_days = 0
+high_risk = true
+
+[[rule]]
+id = "large-old-files"
+provider = "large-old-files"
+risk = "review"
+enabled = false
+operation = "recovery"
+min_age_days = 180
+min_size_bytes = 500000000
+class = "unknown_content"
+scope = "files"
+scan_roots = []
+exclude_paths = []
+exclude_name_patterns = []
+high_risk = false
+
+[[rule]]
+id = "duplicates"
+provider = "duplicates"
+risk = "review"
+enabled = false
+operation = "recovery"
+age_basis = "not_applicable"
+class = "unknown_content"
+scope = "files"
+scan_roots = []
+exclude_paths = []
+exclude_name_patterns = []
+min_age_days = 0
+high_risk = false
+
+[[rule]]
+id = "quicklook-cache"
+provider = "quicklook-cache"
+risk = "protected"
+enabled = false
+operation = "guidance"
+age_basis = "not_applicable"
+class = "unknown_content"
+scope = "provider"
+scan_roots = []
+exclude_paths = []
+exclude_name_patterns = []
+min_age_days = 0
+high_risk = false
+
+[[rule]]
+id = "mail-attachments"
+provider = "mail-attachments"
+risk = "protected"
+enabled = false
+operation = "guidance"
+age_basis = "not_applicable"
+class = "user_state"
+scope = "provider"
+scan_roots = []
+exclude_paths = []
+exclude_name_patterns = []
+min_age_days = 0
+high_risk = false
+
+[[rule]]
+id = "time-machine-snapshots"
+provider = "time-machine-snapshots"
+risk = "protected"
+enabled = false
+operation = "guidance"
+age_basis = "not_applicable"
+class = "unknown_content"
+scope = "provider"
+scan_roots = []
+exclude_paths = []
+exclude_name_patterns = []
+min_age_days = 0
+high_risk = false
+
+[[rule]]
+id = "minecraft-data"
+provider = "minecraft-data"
+risk = "protected"
+enabled = false
+operation = "inventory"
+age_basis = "not_applicable"
+class = "user_state"
+scope = "provider"
+scan_roots = []
+exclude_paths = []
+exclude_name_patterns = []
+min_age_days = 0
+high_risk = false
+
+[[rule]]
+id = "system-logs"
+provider = "system-logs"
+risk = "protected"
+enabled = false
+operation = "inventory"
+age_basis = "not_applicable"
+class = "unknown_content"
+scope = "provider"
+scan_roots = []
+exclude_paths = []
+exclude_name_patterns = []
+min_age_days = 0
+high_risk = false
+
+[[rule]]
+id = "system-caches"
+provider = "system-caches"
+risk = "protected"
+enabled = false
+operation = "inventory"
+age_basis = "not_applicable"
+class = "unknown_content"
+scope = "provider"
+scan_roots = []
+exclude_paths = []
+exclude_name_patterns = []
+min_age_days = 0
+high_risk = false
+
+[[rule]]
+id = "app-bundle-resources"
+provider = "app-bundle-resources"
+risk = "protected"
+enabled = false
+operation = "inventory"
+age_basis = "not_applicable"
+class = "unknown_content"
+scope = "provider"
+scan_roots = []
+exclude_paths = []
+exclude_name_patterns = []
+min_age_days = 0
+high_risk = false
+
+[[rule]]
+id = "personal-databases"
+provider = "personal-databases"
+risk = "protected"
+enabled = false
+operation = "inventory"
+age_basis = "not_applicable"
+class = "user_state"
+scope = "provider"
+scan_roots = []
+exclude_paths = []
+exclude_name_patterns = []
+min_age_days = 0
+high_risk = false
+
+[[rule]]
+id = "app-user-caches"
+provider = "app-user-caches"
+risk = "review"
+enabled = false
+operation = "inventory"
+class = "unknown_content"
+scope = "provider"
+scan_roots = []
+exclude_paths = []
+exclude_name_patterns = ["com.apple.*"]
+high_risk = false
+
+[[rule]]
+id = "sandbox-app-caches"
+provider = "sandbox-app-caches"
+risk = "review"
+enabled = false
+operation = "inventory"
+class = "unknown_content"
+scope = "provider"
+scan_roots = []
+exclude_paths = []
+exclude_name_patterns = ["com.apple.*"]
+high_risk = false
+
+[[rule]]
+id = "group-container-caches"
+provider = "group-container-caches"
+risk = "review"
+enabled = false
+operation = "inventory"
+class = "unknown_content"
+scope = "provider"
+scan_roots = []
+exclude_paths = []
+exclude_name_patterns = ["group.com.apple.*"]
+high_risk = false
+
+[[rule]]
+id = "pnpm-store"
+provider = "pnpm-store"
+risk = "review"
+enabled = false
+operation = "permanent"
+class = "rebuildable_cache"
+scope = "provider"
+scan_roots = []
+exclude_paths = []
+exclude_name_patterns = []
+high_risk = false
+
+[[rule]]
+id = "bun-cache"
+provider = "bun-cache"
+risk = "review"
+enabled = false
+operation = "inventory"
+class = "rebuildable_cache"
+scope = "provider"
+scan_roots = []
+exclude_paths = []
+exclude_name_patterns = []
+high_risk = false
+
+[[rule]]
+id = "deno-cache"
+provider = "deno-cache"
+risk = "review"
+enabled = false
+operation = "permanent"
+class = "rebuildable_cache"
+scope = "provider"
+scan_roots = []
+exclude_paths = []
+exclude_name_patterns = []
+high_risk = false
+
+[[rule]]
+id = "bundler-cache"
+provider = "bundler-cache"
+risk = "review"
+enabled = false
+operation = "guidance"
+class = "rebuildable_cache"
+scope = "provider"
+scan_roots = []
+exclude_paths = []
+exclude_name_patterns = []
+age_basis = "not_applicable"
+min_age_days = 0
+high_risk = false
+
+[[rule]]
+id = "rubygems-old-versions"
+provider = "rubygems-old-versions"
+risk = "review"
+enabled = false
+operation = "guidance"
+class = "user_state"
+scope = "provider"
+scan_roots = []
+exclude_paths = []
+exclude_name_patterns = []
+age_basis = "not_applicable"
+min_age_days = 0
+high_risk = false
+
+[[rule]]
+id = "pyenv-cache"
+provider = "pyenv-cache"
+risk = "review"
+enabled = false
+operation = "inventory"
+class = "rebuildable_cache"
+scope = "provider"
+scan_roots = []
+exclude_paths = []
+exclude_name_patterns = []
+high_risk = false
+
+[[rule]]
+id = "pyenv-versions"
+provider = "pyenv-versions"
+risk = "review"
+enabled = false
+operation = "guidance"
+class = "user_state"
+scope = "provider"
+scan_roots = []
+exclude_paths = []
+exclude_name_patterns = []
+age_basis = "not_applicable"
+min_age_days = 0
+high_risk = false
+
+[[rule]]
+id = "dart-pub-cache"
+provider = "dart-pub-cache"
+risk = "review"
+enabled = false
+operation = "permanent"
+class = "rebuildable_cache"
+scope = "provider"
+scan_roots = []
+exclude_paths = []
+exclude_name_patterns = []
+high_risk = false
+
+[[rule]]
+id = "terraform-plugin-cache"
+provider = "terraform-plugin-cache"
+risk = "review"
+enabled = false
+operation = "inventory"
+class = "rebuildable_cache"
+scope = "provider"
+scan_roots = []
+exclude_paths = []
+exclude_name_patterns = []
+high_risk = false
+
+[[rule]]
+id = "playwright-browsers"
+provider = "playwright-browsers"
+risk = "review"
+enabled = false
+operation = "inventory"
+class = "rebuildable_cache"
+scope = "provider"
+scan_roots = []
+exclude_paths = []
+exclude_name_patterns = []
+high_risk = false
+
+[[rule]]
+id = "puppeteer-browsers"
+provider = "puppeteer-browsers"
+risk = "review"
+enabled = false
+operation = "inventory"
+class = "rebuildable_cache"
+scope = "provider"
+scan_roots = []
+exclude_paths = []
+exclude_name_patterns = []
+high_risk = false
+
+[[rule]]
+id = "cypress-browsers"
+provider = "cypress-browsers"
+risk = "review"
+enabled = false
+operation = "inventory"
+class = "rebuildable_cache"
+scope = "provider"
+scan_roots = []
+exclude_paths = []
+exclude_name_patterns = []
+high_risk = false
+
+[[rule]]
+id = "jetbrains-caches"
+provider = "jetbrains-caches"
+risk = "review"
+enabled = false
+operation = "inventory"
+class = "rebuildable_cache"
+scope = "provider"
+scan_roots = []
+exclude_paths = []
+exclude_name_patterns = []
+high_risk = false
+
+[[rule]]
+id = "jetbrains-logs"
+provider = "jetbrains-logs"
+risk = "review"
+enabled = false
+operation = "inventory"
+class = "logs"
+scope = "provider"
+scan_roots = []
+exclude_paths = []
+exclude_name_patterns = []
+high_risk = false
+
+[[rule]]
+id = "wget-state"
+provider = "wget-state"
+risk = "review"
+enabled = false
+operation = "guidance"
+class = "user_state"
+scope = "provider"
+scan_roots = []
+exclude_paths = []
+exclude_name_patterns = []
+age_basis = "not_applicable"
+min_age_days = 0
+high_risk = false
+
+[[rule]]
+id = "huggingface-cache"
+provider = "huggingface-cache"
+risk = "review"
+enabled = false
+operation = "inventory"
+class = "rebuildable_cache"
+scope = "provider"
+scan_roots = []
+exclude_paths = []
+exclude_name_patterns = []
+high_risk = false
+
+[[rule]]
+id = "pytorch-hub"
+provider = "pytorch-hub"
+risk = "review"
+enabled = false
+operation = "inventory"
+class = "rebuildable_cache"
+scope = "provider"
+scan_roots = []
+exclude_paths = []
+exclude_name_patterns = []
+high_risk = false
+
+[[rule]]
+id = "ollama-models"
+provider = "ollama-models"
+risk = "review"
+enabled = false
+operation = "inventory"
+class = "user_state"
+scope = "provider"
+scan_roots = []
+exclude_paths = []
+exclude_name_patterns = []
+high_risk = false
+
+[[rule]]
+id = "cargo-git"
+provider = "cargo-git"
+risk = "review"
+enabled = false
+operation = "inventory"
+class = "rebuildable_cache"
+scope = "provider"
+scan_roots = []
+exclude_paths = []
+exclude_name_patterns = []
+age_basis = "not_applicable"
+min_age_days = 0
+high_risk = false
+
+[[rule]]
+id = "cargo-installed"
+provider = "cargo-installed"
+risk = "review"
+enabled = false
+operation = "inventory"
+class = "user_state"
+scope = "provider"
+scan_roots = []
+exclude_paths = []
+exclude_name_patterns = []
+age_basis = "not_applicable"
+min_age_days = 0
+high_risk = false
+
+[[rule]]
+id = "docker-tagged-images"
+provider = "docker-tagged-images"
+risk = "review"
+enabled = false
+operation = "inventory"
+class = "user_state"
+scope = "provider"
+scan_roots = []
+exclude_paths = []
+exclude_name_patterns = []
+age_basis = "not_applicable"
+min_age_days = 0
+high_risk = false
+[rule.docker]
+context = "current"
+endpoint_policy = "local_desktop_only"
+allow_remote = false
+
+[[rule]]
+id = "photos-library"
+provider = "photos-library"
+risk = "protected"
+enabled = false
+operation = "inventory"
+class = "user_state"
+scope = "provider"
+scan_roots = []
+exclude_paths = []
+exclude_name_patterns = []
+age_basis = "not_applicable"
+min_age_days = 0
+high_risk = false
+
+[[rule]]
+id = "messages-database"
+provider = "messages-database"
+risk = "protected"
+enabled = false
+operation = "inventory"
+class = "user_state"
+scope = "provider"
+scan_roots = []
+exclude_paths = []
+exclude_name_patterns = []
+age_basis = "not_applicable"
+min_age_days = 0
+high_risk = false
+
+[[rule]]
+id = "keychain"
+provider = "keychain"
+risk = "protected"
+enabled = false
+operation = "inventory"
+class = "user_state"
+scope = "provider"
+scan_roots = []
+exclude_paths = []
+exclude_name_patterns = []
+age_basis = "not_applicable"
+min_age_days = 0
+high_risk = false
+
+[[rule]]
+id = "mail-database"
+provider = "mail-database"
+risk = "protected"
+enabled = false
+operation = "inventory"
+class = "user_state"
+scope = "provider"
+scan_roots = []
+exclude_paths = []
+exclude_name_patterns = []
+age_basis = "not_applicable"
+min_age_days = 0
+high_risk = false
+
+[[rule]]
+id = "notes-database"
+provider = "notes-database"
+risk = "protected"
+enabled = false
+operation = "inventory"
+class = "user_state"
+scope = "provider"
+scan_roots = []
+exclude_paths = []
+exclude_name_patterns = []
+age_basis = "not_applicable"
+min_age_days = 0
+high_risk = false
+
+[[rule]]
+id = "credentials"
+provider = "credentials"
+risk = "protected"
+enabled = false
+operation = "inventory"
+class = "user_state"
+scope = "provider"
+scan_roots = []
+exclude_paths = []
+exclude_name_patterns = []
+age_basis = "not_applicable"
+min_age_days = 0
+high_risk = false
+
+[[rule]]
+id = "sip-managed-locations"
+provider = "sip-managed-locations"
+risk = "protected"
+enabled = false
+operation = "inventory"
+class = "unknown_content"
+scope = "provider"
+scan_roots = []
+exclude_paths = []
+exclude_name_patterns = []
+age_basis = "not_applicable"
+min_age_days = 0
+high_risk = false

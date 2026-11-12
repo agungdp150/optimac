@@ -6,31 +6,7 @@ pub(super) fn sync_dir(path: &Path) -> io::Result<()> {
 }
 #[cfg(target_os = "macos")]
 pub(super) fn move_exclusive(source: &Path, target: &Path) -> io::Result<()> {
-    use std::os::fd::{AsRawFd, FromRawFd};
-    fn open_dir(path: &Path) -> io::Result<File> {
-        let mut dir = File::open("/")?;
-        for component in path.components() {
-            match component {
-                std::path::Component::RootDir => continue,
-                std::path::Component::Normal(name) => {
-                    let name = std::ffi::CString::new(name.as_bytes())?;
-                    let fd = unsafe {
-                        libc::openat(
-                            dir.as_raw_fd(),
-                            name.as_ptr(),
-                            libc::O_RDONLY | libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC,
-                        )
-                    };
-                    if fd < 0 {
-                        return Err(io::Error::last_os_error());
-                    }
-                    dir = unsafe { File::from_raw_fd(fd) };
-                }
-                _ => return Err(error("Unsafe path component")),
-            }
-        }
-        Ok(dir)
-    }
+    use std::os::fd::AsRawFd;
     let source_dir = open_dir(
         source
             .parent()
@@ -90,4 +66,30 @@ pub(super) fn operation_lock(root: &Path) -> io::Result<File> {
         return Err(error("Another recovery operation is running"));
     }
     Ok(file)
+}
+
+pub(super) fn open_dir(path: &Path) -> io::Result<File> {
+    use std::os::fd::{AsRawFd, FromRawFd};
+    let mut dir = File::open("/")?;
+    for component in path.components() {
+        match component {
+            std::path::Component::RootDir => continue,
+            std::path::Component::Normal(name) => {
+                let name = std::ffi::CString::new(name.as_bytes())?;
+                let fd = unsafe {
+                    libc::openat(
+                        dir.as_raw_fd(),
+                        name.as_ptr(),
+                        libc::O_RDONLY | libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC,
+                    )
+                };
+                if fd < 0 {
+                    return Err(io::Error::last_os_error());
+                }
+                dir = unsafe { File::from_raw_fd(fd) };
+            }
+            _ => return Err(error("Unsafe path component")),
+        }
+    }
+    Ok(dir)
 }
