@@ -568,6 +568,21 @@
       "review": "passed_under_os_sandbox"
     },
     {
+      "name": "optimac:lib/recovery::unit_purge::tests::deletion_walk_records_permission_failures_without_chmod_and_resumes",
+      "class": "fixture_fs",
+      "review": "passed_under_os_sandbox"
+    },
+    {
+      "name": "optimac:lib/recovery::unit_purge::tests::deletion_walk_stops_at_device_boundaries_identity_changes_and_interruptions",
+      "class": "fixture_fs",
+      "review": "passed_under_os_sandbox"
+    },
+    {
+      "name": "optimac:lib/recovery::unit_purge::tests::deletion_walk_unlinks_links_as_links_and_never_leaves_the_payload",
+      "class": "fixture_fs",
+      "review": "passed_under_os_sandbox"
+    },
+    {
       "name": "optimac:lib/recovery::unit_purge::tests::purge_review_accepts_only_moved_directory_unit_records",
       "class": "fixture_fs",
       "review": "passed_under_os_sandbox"

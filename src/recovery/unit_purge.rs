@@ -8,7 +8,16 @@ use super::{
     unit::{self, StoredRecord, UnitRecord},
 };
 use crate::fixture_paths::FixtureRoot;
-use std::{fs::File, io, os::unix::fs::MetadataExt};
+use std::{
+    ffi::{CStr, CString, OsStr},
+    fs::File,
+    io,
+    os::{
+        fd::{AsRawFd, FromRawFd},
+        unix::{ffi::OsStrExt, fs::MetadataExt},
+    },
+    path::{Path, PathBuf},
+};
 
 pub const WARNING: &str =
     "Permanently deletes this recovery payload. It cannot be restored afterward.";
@@ -43,6 +52,248 @@ impl PurgeReview {
 
 fn not_eligible(id: &str, why: &str) -> io::Error {
     error(&format!("Recovery {id}: {why}; nothing changed"))
+}
+
+/// Outcome of one deletion walk over a payload.
+#[derive(Debug, Default)]
+pub struct WalkReport {
+    pub deleted: usize,
+    pub failed: usize,
+    /// First failures (path relative to the payload, reason).
+    pub failures: Vec<(PathBuf, String)>,
+    /// Set when the unit was stopped (device/mount boundary, identity change).
+    pub stopped: Option<String>,
+}
+const MAX_LISTED_FAILURES: usize = 200;
+const MAX_DEPTH: usize = 512;
+
+/// Injection points for boundary, identity and interruption tests.
+#[derive(Clone, Debug, Default)]
+pub(crate) struct WalkFaults {
+    pub foreign_device: Option<PathBuf>,
+    pub changed_identity: Option<PathBuf>,
+    pub stop_after_entries: Option<usize>,
+}
+
+impl WalkReport {
+    fn fail(&mut self, path: &Path, error: &io::Error) {
+        self.failed += 1;
+        if self.failures.len() < MAX_LISTED_FAILURES {
+            let reason = match error.raw_os_error() {
+                Some(libc::EACCES | libc::EPERM) => format!(
+                    "{error}: read-only directory, immutable flag or ACL; permissions were not changed"
+                ),
+                _ => error.to_string(),
+            };
+            self.failures.push((path.to_path_buf(), reason));
+        }
+    }
+    fn deleted_one(&mut self, faults: &WalkFaults) -> io::Result<()> {
+        self.deleted += 1;
+        if faults.stop_after_entries == Some(self.deleted) {
+            return Err(error("Injected interruption during deletion"));
+        }
+        Ok(())
+    }
+}
+
+fn open_dir_at(parent: &File, name: &CStr) -> io::Result<File> {
+    // SAFETY: valid descriptor and terminated name; the result is owned.
+    let fd = unsafe {
+        libc::openat(
+            parent.as_raw_fd(),
+            name.as_ptr(),
+            libc::O_RDONLY | libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC,
+        )
+    };
+    if fd < 0 {
+        return Err(io::Error::last_os_error());
+    }
+    Ok(unsafe { File::from_raw_fd(fd) })
+}
+
+fn unlink_at(parent: &File, name: &CStr, flags: i32) -> io::Result<()> {
+    // SAFETY: valid descriptor and terminated name.
+    if unsafe { libc::unlinkat(parent.as_raw_fd(), name.as_ptr(), flags) } != 0 {
+        return Err(io::Error::last_os_error());
+    }
+    Ok(())
+}
+
+/// Entry names of a pinned directory, read through a duplicate descriptor.
+fn names(dir: &File) -> io::Result<Vec<CString>> {
+    // SAFETY: dup of a valid descriptor; fdopendir takes ownership of it.
+    let fd = unsafe { libc::dup(dir.as_raw_fd()) };
+    if fd < 0 {
+        return Err(io::Error::last_os_error());
+    }
+    let stream = unsafe { libc::fdopendir(fd) };
+    if stream.is_null() {
+        unsafe { libc::close(fd) };
+        return Err(io::Error::last_os_error());
+    }
+    struct Stream(*mut libc::DIR);
+    impl Drop for Stream {
+        fn drop(&mut self) {
+            unsafe { libc::closedir(self.0) };
+        }
+    }
+    let stream = Stream(stream);
+    unsafe { libc::rewinddir(stream.0) };
+    let mut out = Vec::new();
+    loop {
+        unsafe { *libc::__error() = 0 };
+        let entry = unsafe { libc::readdir(stream.0) };
+        if entry.is_null() {
+            let errno = unsafe { *libc::__error() };
+            if errno != 0 {
+                return Err(io::Error::from_raw_os_error(errno));
+            }
+            return Ok(out);
+        }
+        let name = unsafe { CStr::from_ptr((*entry).d_name.as_ptr()) };
+        if name != c"." && name != c".." {
+            out.push(name.to_owned());
+        }
+    }
+}
+
+/// Delete everything inside `dir`. Returns whether the subtree is now empty.
+fn clear(
+    dir: &File,
+    relative: &Path,
+    device: u64,
+    depth: usize,
+    report: &mut WalkReport,
+    faults: &WalkFaults,
+) -> io::Result<bool> {
+    let entries = match names(dir) {
+        Ok(entries) => entries,
+        Err(e) => {
+            report.fail(relative, &e);
+            return Ok(false);
+        }
+    };
+    let mut empty = true;
+    for name in entries {
+        let child = relative.join(OsStr::from_bytes(name.to_bytes()));
+        let st = match fs_ops::stat_at(dir, &name) {
+            Ok(st) => st,
+            Err(e) if e.kind() == io::ErrorKind::NotFound => continue,
+            Err(e) => {
+                report.fail(&child, &e);
+                empty = false;
+                continue;
+            }
+        };
+        let entry_device = if faults.foreign_device.as_deref() == Some(child.as_path()) {
+            device.wrapping_add(1)
+        } else {
+            st.st_dev as u64
+        };
+        if entry_device != device {
+            report.stopped = Some(format!(
+                "{}: on another device or a mount point; unit stopped",
+                child.display()
+            ));
+            return Ok(false);
+        }
+        if st.st_mode & libc::S_IFMT != libc::S_IFDIR {
+            // Files, symlinks (as links, never followed) and special files.
+            match unlink_at(dir, &name, 0) {
+                Ok(()) => report.deleted_one(faults)?,
+                Err(e) if e.kind() == io::ErrorKind::NotFound => {}
+                Err(e) => {
+                    report.fail(&child, &e);
+                    empty = false;
+                }
+            }
+            continue;
+        }
+        if depth >= MAX_DEPTH {
+            report.stopped = Some(format!(
+                "{}: deeper than {MAX_DEPTH} levels",
+                child.display()
+            ));
+            return Ok(false);
+        }
+        let opened = match open_dir_at(dir, &name) {
+            Ok(opened) => opened,
+            Err(e) => {
+                report.fail(&child, &e);
+                empty = false;
+                continue;
+            }
+        };
+        let meta = opened.metadata()?;
+        let changed = faults.changed_identity.as_deref() == Some(child.as_path());
+        if changed || (meta.dev(), meta.ino()) != (st.st_dev as u64, st.st_ino) {
+            report.stopped = Some(format!(
+                "{}: identity changed during the walk; unit stopped",
+                child.display()
+            ));
+            return Ok(false);
+        }
+        let cleared = clear(&opened, &child, device, depth + 1, report, faults)?;
+        if report.stopped.is_some() {
+            return Ok(false);
+        }
+        if !cleared {
+            empty = false;
+            continue;
+        }
+        let again = fs_ops::stat_at(dir, &name)?;
+        if (again.st_dev, again.st_ino) != (st.st_dev, st.st_ino) {
+            report.stopped = Some(format!(
+                "{}: identity changed during the walk; unit stopped",
+                child.display()
+            ));
+            return Ok(false);
+        }
+        match unlink_at(dir, &name, libc::AT_REMOVEDIR) {
+            Ok(()) => report.deleted_one(faults)?,
+            Err(e) if e.kind() == io::ErrorKind::NotFound => {}
+            Err(e) => {
+                report.fail(&child, &e);
+                empty = false;
+            }
+        }
+    }
+    Ok(empty)
+}
+
+/// Delete the directory `name` inside the pinned `parent`, whose identity
+/// must be `expected` (device, inode). Every lookup is relative to a
+/// descriptor opened with O_NOFOLLOW; nothing outside the tree is touched.
+/// Errors are returned only when the walk could not start or was interrupted;
+/// per-entry failures and stops are in the report.
+#[cfg_attr(not(test), allow(dead_code))] // Wired into purge execution next.
+pub(super) fn delete_tree(
+    parent: &File,
+    name: &CStr,
+    expected: (u64, u64),
+    faults: &WalkFaults,
+) -> io::Result<WalkReport> {
+    let top = open_dir_at(parent, name)?;
+    let meta = top.metadata()?;
+    if (meta.dev(), meta.ino()) != expected {
+        return Err(error("Payload identity changed; nothing deleted"));
+    }
+    let mut report = WalkReport::default();
+    let cleared = clear(&top, Path::new(""), expected.0, 1, &mut report, faults)?;
+    if cleared && report.stopped.is_none() {
+        let again = fs_ops::stat_at(parent, name)?;
+        if (again.st_dev as u64, again.st_ino) != expected {
+            report.stopped = Some("payload identity changed during the walk; unit stopped".into());
+        } else {
+            match unlink_at(parent, name, libc::AT_REMOVEDIR) {
+                Ok(()) => report.deleted_one(faults)?,
+                Err(e) => report.fail(Path::new("."), &e),
+            }
+        }
+    }
+    parent.sync_all()?;
+    Ok(report)
 }
 
 impl RecoveryContext {
@@ -381,5 +632,122 @@ pub(super) mod tests {
         fs::remove_file(s.root()).unwrap();
         fs::rename(&moved_root, s.root()).unwrap();
         assert!(s.context.purge_review(Some(&s.cap), "100").is_ok());
+    }
+
+    fn tree_of(name: &str) -> (Setup, PathBuf, File, (u64, u64)) {
+        let s = Setup::new();
+        let unit = bundle(&s.home, &s.outside.join("profile"), name);
+        let parent = File::open(unit.parent().unwrap()).unwrap();
+        let m = fs::symlink_metadata(&unit).unwrap();
+        (s, unit, parent, (m.dev(), m.ino()))
+    }
+    fn count(root: &Path) -> usize {
+        metadata(root).len()
+    }
+    fn cname(path: &Path) -> CString {
+        CString::new(path.file_name().unwrap().as_bytes()).unwrap()
+    }
+
+    #[test]
+    fn deletion_walk_unlinks_links_as_links_and_never_leaves_the_payload() {
+        use std::os::unix::fs::PermissionsExt;
+        let (s, unit, parent, identity) = tree_of("chromium-1248");
+        let outside_before = metadata(&s.outside);
+        let entries = count(&unit);
+        fs::set_permissions(&s.outside, fs::Permissions::from_mode(0o000)).unwrap();
+        let mut wrong = identity;
+        wrong.1 += 1;
+        assert!(delete_tree(&parent, &cname(&unit), wrong, &WalkFaults::default()).is_err());
+        assert_eq!(count(&unit), entries);
+        let report = delete_tree(&parent, &cname(&unit), identity, &WalkFaults::default()).unwrap();
+        assert_eq!(
+            (report.deleted, report.failed, report.stopped),
+            (entries, 0, None)
+        );
+        assert!(fs::symlink_metadata(&unit).is_err());
+        fs::set_permissions(&s.outside, fs::Permissions::from_mode(0o700)).unwrap();
+        assert_eq!(metadata(&s.outside), outside_before);
+        assert_eq!(
+            fs::read(s.outside.join("profile/secret")).unwrap(),
+            b"outside"
+        );
+    }
+
+    #[test]
+    fn deletion_walk_records_permission_failures_without_chmod_and_resumes() {
+        use std::os::unix::fs::PermissionsExt;
+        let (_s, unit, parent, identity) = tree_of("chromium-1248");
+        let readonly = unit.join("readonly");
+        fs::create_dir(&readonly).unwrap();
+        fs::write(readonly.join("a"), b"a").unwrap();
+        fs::write(readonly.join("b"), b"b").unwrap();
+        let locked = unit.join("locked");
+        fs::create_dir(&locked).unwrap();
+        fs::write(locked.join("c"), b"c").unwrap();
+        fs::set_permissions(&readonly, fs::Permissions::from_mode(0o500)).unwrap();
+        fs::set_permissions(&locked, fs::Permissions::from_mode(0o000)).unwrap();
+        let report = delete_tree(&parent, &cname(&unit), identity, &WalkFaults::default()).unwrap();
+        assert_eq!(report.failed, 3, "{:?}", report.failures);
+        assert!(report.stopped.is_none());
+        let failed: Vec<_> = report.failures.iter().map(|f| f.0.clone()).collect();
+        for path in ["readonly/a", "readonly/b", "locked"] {
+            assert!(failed.contains(&PathBuf::from(path)), "{failed:?}");
+        }
+        assert!(
+            report
+                .failures
+                .iter()
+                .all(|f| f.1.contains("permissions were not changed"))
+        );
+        // No chmod: modes are exactly as the fixture left them.
+        assert_eq!(
+            fs::symlink_metadata(&readonly).unwrap().mode() & 0o777,
+            0o500
+        );
+        assert_eq!(fs::symlink_metadata(&locked).unwrap().mode() & 0o777, 0o000);
+        assert!(!unit.join("Chromium.app").exists());
+        assert!(readonly.join("a").exists() && unit.exists());
+        // The fixture (not the walk) fixes permissions; a manual re-run finishes.
+        fs::set_permissions(&readonly, fs::Permissions::from_mode(0o700)).unwrap();
+        fs::set_permissions(&locked, fs::Permissions::from_mode(0o700)).unwrap();
+        let report = delete_tree(&parent, &cname(&unit), identity, &WalkFaults::default()).unwrap();
+        assert_eq!((report.deleted, report.failed), (6, 0));
+        assert!(!unit.exists());
+    }
+
+    #[test]
+    fn deletion_walk_stops_at_device_boundaries_identity_changes_and_interruptions() {
+        let (_s, unit, parent, identity) = tree_of("chromium-1248");
+        let mount = PathBuf::from("Chromium.app/Contents/Frameworks");
+        fs::write(
+            unit.join("Chromium.app/Contents/Frameworks/marker"),
+            b"keep",
+        )
+        .unwrap();
+        let faults = WalkFaults {
+            foreign_device: Some(mount.clone()),
+            ..WalkFaults::default()
+        };
+        let report = delete_tree(&parent, &cname(&unit), identity, &faults).unwrap();
+        let stop = report.stopped.unwrap();
+        assert!(stop.contains("another device or a mount point"), "{stop}");
+        assert_eq!(fs::read(unit.join(&mount).join("marker")).unwrap(), b"keep");
+        let faults = WalkFaults {
+            changed_identity: Some(mount.clone()),
+            ..WalkFaults::default()
+        };
+        let report = delete_tree(&parent, &cname(&unit), identity, &faults).unwrap();
+        assert!(report.stopped.unwrap().contains("identity changed"));
+        assert!(unit.join(&mount).join("marker").exists());
+        let before = count(&unit);
+        let faults = WalkFaults {
+            stop_after_entries: Some(2),
+            ..WalkFaults::default()
+        };
+        assert!(delete_tree(&parent, &cname(&unit), identity, &faults).is_err());
+        assert_eq!(count(&unit), before - 2);
+        let report = delete_tree(&parent, &cname(&unit), identity, &WalkFaults::default()).unwrap();
+        assert_eq!((report.deleted, report.failed), (before - 2, 0));
+        assert!(!unit.exists());
     }
 }
