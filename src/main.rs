@@ -200,6 +200,7 @@ fn main() -> ExitCode {
                 || tail[i] == "--deep"
                 || tail[i] == "--all"
                 || tail[i] == "--verbose"
+                || tail[i] == "--by-category"
             {
                 i += 1;
             } else {
@@ -261,7 +262,15 @@ fn main() -> ExitCode {
                     let mut json = serde_json::to_value(&report).expect("serializable report");
                     json["summary"] = report.summary();
                     json["grouped_totals"] = serde_json::to_value(report.grouped_totals()).unwrap();
+                    if tail.iter().any(|a| a == "--by-category") {
+                        json["categories"] = serde_json::to_value(
+                            optimac::cleanup::category::totals(&report.providers),
+                        )
+                        .unwrap();
+                    }
                     println!("{}", serde_json::to_string_pretty(&json).unwrap());
+                } else if tail.iter().any(|a| a == "--by-category") {
+                    print!("{}", optimac::cleanup::category::render(&report.providers));
                 } else {
                     println!(
                         "{}",

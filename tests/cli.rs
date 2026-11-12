@@ -165,6 +165,18 @@ exclude_name_patterns = ["*.tmp"]
         String::from_utf8_lossy(&result.stderr)
     );
     let report: serde_json::Value = serde_json::from_slice(&result.stdout).unwrap();
+    let categorized = Command::new(env!("CARGO_BIN_EXE_optimac"))
+        .args(["clean", "scan", "--json", "--by-category", "--config"])
+        .arg(&config)
+        .env("HOME", &home)
+        .output()
+        .unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&categorized.stdout).unwrap();
+    assert_eq!(json["categories"].as_array().unwrap().len(), 10);
+    assert_eq!(
+        json["categories"][9]["allocated_bytes"],
+        report["providers"][0]["allocated_bytes"]
+    );
     assert_eq!(report["providers"][0]["logical_bytes"], 5);
     assert_eq!(report["providers"].as_array().unwrap().len(), 1);
     std::fs::write(

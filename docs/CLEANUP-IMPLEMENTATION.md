@@ -133,3 +133,9 @@ Deliverable 2 progress: refused pip/Go candidates now remain unexecuted while th
 ### Cache versus user-data reporting
 
 D1 implemented: class/risk-grouped allocated totals in the text summary and `grouped_totals` in scan JSON, with per-group lower-bound flags. Unknown or unattributed generic caches remain in the unknown group; review-risk caches and user state are separate from conditional caches. D2 class filtering, D3 category view, D4 available-space samples and D5 recovery-test isolation remain unimplemented. No cleanup or scanning policy changed.
+
+### Class filtering and category reporting
+
+D2 implemented: class labels appear in Top and --all rows; --class cache/review/all filters those rows while leaving totals unchanged. Cache and review follow the D1 class/risk groups; unknown and project-output rows remain available with --class all. Invalid values fail before scanning.
+
+D3 implemented: --by-category reports ten categories and optional JSON categories, using an explicit provider table checked against the shipped catalog and registry. Known Brave, Firefox and Zen generic-cache owner names route to browser caches; other generic entries remain generic. Unknown category sizes stay unknown and denied Trash reports unknown. Name-based browser attribution is a heuristic, not proof of cache content. D4 available-space samples and D5 recovery test isolation remain pending. No mutation policy changed.
