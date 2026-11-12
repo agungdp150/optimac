@@ -6,7 +6,7 @@ build:
 	cp target/release/$(BINARY) bin/$(BINARY)
 test: test-classification
 	cargo fmt --check
-	./scripts/test-safe.sh
+	python3 scripts/test-sandboxed.py
 	cargo clippy --locked --features fixture-only --all-targets -- -D warnings
 security:
 	./scripts/security-scan.sh
@@ -24,3 +24,7 @@ rust-test: test
 .PHONY: test-classification
 test-classification:
 	python3 scripts/check-test-classification.py
+
+.PHONY: test-fast
+test-fast:
+	./scripts/test-safe.sh
