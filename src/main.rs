@@ -65,10 +65,8 @@ fn main() -> ExitCode {
         };
     }
     if args == ["log"] || args == ["history"] {
-        let home = std::env::var_os("HOME").map(std::path::PathBuf::from);
-        return match home
-            .ok_or_else(|| std::io::Error::other("HOME unavailable"))
-            .and_then(|h| optimac::recovery::history(&h))
+        return match optimac::paths::AppPaths::from_env()
+            .and_then(|paths| optimac::recovery::history(paths.home()))
         {
             Ok(text) => {
                 println!("{text}");
@@ -100,11 +98,9 @@ fn main() -> ExitCode {
     if command == "recovery" {
         use std::io::{IsTerminal, Write};
         if args.len() == 3 && args[1] == "inspect" {
-            let result = std::env::var_os("HOME")
-                .ok_or_else(|| std::io::Error::other("HOME unavailable"))
-                .and_then(|h| {
-                    optimac::recovery::purge::inspect(Path::new(&h), args[2].to_str().unwrap_or(""))
-                });
+            let result = optimac::paths::AppPaths::from_env().and_then(|paths| {
+                optimac::recovery::purge::inspect(paths.home(), args[2].to_str().unwrap_or(""))
+            });
             return match result {
                 Ok(s) => {
                     println!("{s}");
@@ -125,12 +121,12 @@ fn main() -> ExitCode {
             return ExitCode::from(2);
         }
         let result = (|| -> std::io::Result<String> {
-            let home = std::env::var_os("HOME")
-                .ok_or_else(|| std::io::Error::other("HOME unavailable"))?;
+            let paths = optimac::paths::AppPaths::from_env()?;
+            let home = paths.home();
             let id = args[2]
                 .to_str()
                 .ok_or_else(|| std::io::Error::other("Invalid ID"))?;
-            let plan = optimac::recovery::purge::plan(Path::new(&home), id)?;
+            let plan = optimac::recovery::purge::plan(home, id)?;
             println!("{}", plan.describe());
             print!("Type DELETE {id} to confirm, or Enter to cancel: ");
             std::io::stdout().flush()?;
@@ -139,7 +135,7 @@ fn main() -> ExitCode {
             if answer.trim() != format!("DELETE {id}") {
                 return Ok("Cancelled; no data changed".into());
             }
-            optimac::recovery::purge::execute(Path::new(&home), &plan, &cancel)
+            optimac::recovery::purge::execute(home, &plan, &cancel)
         })();
         return match result {
             Ok(s) => {
@@ -161,8 +157,9 @@ fn main() -> ExitCode {
             }
             let catalog = optimac::cleanup::catalog();
             if tail.len() == 2 {
-                let pip = std::env::var_os("HOME")
-                    .map(|home| optimac::cleanup::pip::resolve(Path::new(&home), &cancel));
+                let pip = optimac::paths::AppPaths::from_env()
+                    .ok()
+                    .map(|paths| optimac::cleanup::pip::resolve(paths.home(), &cancel));
                 println!(
                     "{}",
                     serde_json::json!({"schema_version": 1, "providers": catalog, "pip": pip})
@@ -214,10 +211,14 @@ fn main() -> ExitCode {
             );
             return ExitCode::from(2);
         }
-        let Some(home) = std::env::var_os("HOME") else {
-            eprintln!("HOME unavailable");
-            return ExitCode::FAILURE;
+        let paths = match optimac::paths::AppPaths::from_env() {
+            Ok(paths) => paths,
+            Err(e) => {
+                eprintln!("{e}");
+                return ExitCode::FAILURE;
+            }
         };
+        let home = paths.home();
         let budget = if tail.iter().any(|a| a == "--deep") {
             optimac::cleanup::Budget::deep()
         } else {
@@ -234,7 +235,7 @@ fn main() -> ExitCode {
         let result = if let Some(path) = config_path {
             match optimac::cleanup::config::Config::load(Path::new(path)) {
                 Ok(config) => optimac::cleanup::configured_inventory_with_progress(
-                    Path::new(&home),
+                    home,
                     &cancel,
                     budget,
                     &config,
@@ -246,12 +247,7 @@ fn main() -> ExitCode {
                 }
             }
         } else {
-            optimac::cleanup::inventory_with_progress(
-                Path::new(&home),
-                &cancel,
-                budget,
-                &mut progress,
-            )
+            optimac::cleanup::inventory_with_progress(home, &cancel, budget, &mut progress)
         };
         if std::io::IsTerminal::is_terminal(&std::io::stderr()) {
             eprint!("\r\x1b[2K");

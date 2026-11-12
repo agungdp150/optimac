@@ -167,3 +167,15 @@ Deliver sequentially behind gates: (0) isolated fixture safety and three consecu
 ### Narrow v1 Slice 0 audit
 
 **Gate not passed.** `configured_inventory_runs_in_menu_without_default_roots` starts a TUI inventory action that derives HOME from the test process; the inventory validates that real directory even with no configured rules. Other UI actions also derive HOME from the process. Recovery unit tests shown in `src/recovery/mod.rs` and `src/recovery/purge.rs` use distinct named temporary roots with per-root lock files, but the earlier intermittent lock failure has not been explained. A complete per-test fixture-home injection and an enforcement guard proving no real-home/recovery access are still required; a source-text assertion would not prove that property. Three consecutive `make test` runs have not been performed for this gate because current tests are not yet verified hermetic. No plan or apply command was added.
+
+### Slice 0 isolation follow-up (incomplete)
+
+TUI App now accepts an injected home path, and `configured_inventory_runs_in_menu_without_default_roots` explicitly creates and passes a disposable fixture home rather than using the process HOME. `cargo test --locked --bin optimac configured_inventory_runs_in_menu_without_default_roots` passed (1 test). The production constructor still derives HOME normally; this change does not use process-global environment mutation.
+
+The Slice 0 gate is **not passed**: there is no comprehensive enforcement guard against real-home/recovery or outside-fixture I/O, remaining filesystem tests have not all been converted to unique managed fixture homes, and a concurrent recovery-lock regression test is absent. `operation_lock` is scoped to each recovery root's `.lock` and uses nonblocking flock; inspected recovery tests use differently named PID-based roots, but the previous contention cause remains unproven. No sleeps or retries were added. The complete suite was not run because the guard is not yet verified. No cleanup functionality was added.
+
+### Shared filesystem path context
+
+Added `AppPaths` with explicit home input and derived recovery/config paths. CLI home resolution and library action entry points use the shared resolver; recovery derives its existing path through the same context. TUI actions receive their home at construction and pass it into library actions. In TUI unit tests the default constructor has no home, so tests must inject one and missing input fails closed; no concurrent test changes process-global HOME. CLI fixture tests set HOME only on their child process.
+
+Focused tests passed: `configured_inventory_runs_in_menu_without_default_roots`, `missing_fixture_home_fails_closed`, `injected_paths_resolve_consistently_and_missing_home_fails_closed`, and `fixture_paths_are_used_by_cli_history`. The full suite was not run. This is dependency injection, not filesystem authorization: existing APIs still accept paths, other tests need conversion and an enforced fixture boundary, symlink/race protections must be audited, and the recovery lock contention remains unproven. Slice 0 remains incomplete; no planning or deletion changes were added.

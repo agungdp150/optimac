@@ -99,6 +99,7 @@ enum Screen {
 }
 struct App {
     inventory_config: Option<optimac::cleanup::config::Config>,
+    home_path: PathBuf,
     selected: Action,
     home_cursor: usize,
     submenu_cursor: usize,
@@ -128,8 +129,22 @@ struct App {
     shared: Arc<Mutex<(Report, String)>>,
 }
 impl App {
+    #[cfg(not(test))]
     fn new(root: PathBuf) -> Self {
+        Self::with_home(
+            root,
+            optimac::paths::AppPaths::from_env()
+                .map(|p| p.home().to_path_buf())
+                .unwrap_or_default(),
+        )
+    }
+    #[cfg(test)]
+    fn new(root: PathBuf) -> Self {
+        Self::with_home(root, PathBuf::new())
+    }
+    fn with_home(root: PathBuf, home_path: PathBuf) -> Self {
         Self {
+            home_path,
             inventory_config: None,
             selected: Action::Inspect,
             home_cursor: 0,
@@ -188,10 +203,8 @@ impl App {
         let snapshot = self.status_snapshot.clone();
         let detail = self.status_detail.clone();
         let selected = self.selected;
+        let home = self.home_path.clone();
         self.job = Some(std::thread::spawn(move || {
-            let home = std::env::var_os("HOME")
-                .map(PathBuf::from)
-                .unwrap_or_default();
             if selected == Action::Status {
                 let next = optimac::actions::status::collect(&cancel);
                 if !cancel.load(Ordering::Relaxed) {
@@ -293,9 +306,7 @@ impl App {
             return self.key(KeyCode::Enter);
         }
         if self.screen == Screen::Result && self.job.as_ref().is_none_or(|j| j.is_finished()) {
-            let home = std::env::var_os("HOME")
-                .map(PathBuf::from)
-                .unwrap_or_default();
+            let home = self.home_path.clone();
             if !self.confirm
                 && self.selected == Action::Clean
                 && self.plan.lock().unwrap().is_some()
@@ -567,10 +578,8 @@ impl App {
                 self.reviewed = None;
                 let plan_state = self.plan.clone();
                 let choices = self.choices.clone();
+                let home = self.home_path.clone();
                 self.job = Some(std::thread::spawn(move || {
-                    let home = std::env::var_os("HOME")
-                        .map(PathBuf::from)
-                        .unwrap_or_default();
                     let result = if selected == Action::Clean {
                         optimac::recovery::review_files(&home, &root, &cancel).map(|plan| {
                             let text = optimac::recovery::describe(&plan);
@@ -627,7 +636,10 @@ impl App {
                         ));
                         Ok(String::new())
                     } else {
-                        optimac::actions::run(selected, &root, &cancel)
+                        optimac::paths::AppPaths::from_home(Some(home.as_os_str().to_owned()))
+                            .and_then(|paths| {
+                                optimac::actions::run_with_paths(selected, &root, &cancel, &paths)
+                            })
                     };
                     let text = result.unwrap_or_else(|e| format!("Action failed: {e}"));
                     let text = if matches!(

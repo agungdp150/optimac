@@ -325,7 +325,7 @@ pub fn describe(plan: &Plan) -> String {
     s
 }
 fn recovery_root(home: &Path) -> io::Result<PathBuf> {
-    let p = home.join(".optimac-rust-recovery");
+    let p = crate::paths::AppPaths::from_home(Some(home.as_os_str().to_owned()))?.recovery();
     if !p.exists() {
         fs::DirBuilder::new().create(&p)?;
         fs::set_permissions(&p, fs::Permissions::from_mode(0o700))?;

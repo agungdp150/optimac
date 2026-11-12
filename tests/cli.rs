@@ -207,3 +207,26 @@ fn invalid_class_is_usage_error_before_scanning() {
         .unwrap();
     assert_eq!(result.status.code(), Some(2));
 }
+
+#[test]
+fn fixture_paths_are_used_by_cli_history() {
+    let fixture = std::env::temp_dir()
+        .canonicalize()
+        .unwrap()
+        .join(format!("optimac-cli-home-paths-{}", std::process::id()));
+    std::fs::create_dir(&fixture).unwrap();
+    let paths = optimac::paths::AppPaths::from_home(Some(fixture.as_os_str().to_owned())).unwrap();
+    let expected = optimac::recovery::history(paths.home()).unwrap();
+    let output = Command::new(env!("CARGO_BIN_EXE_optimac"))
+        .arg("history")
+        .env("HOME", &fixture)
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    assert_eq!(
+        String::from_utf8(output.stdout).unwrap().trim(),
+        expected.trim()
+    );
+    assert!(!paths.recovery().exists());
+    std::fs::remove_dir(fixture).unwrap();
+}

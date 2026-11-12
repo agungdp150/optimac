@@ -257,7 +257,12 @@ fn status_refresh_keeps_previous_values_and_does_not_overlap() {
 
 #[test]
 fn configured_inventory_runs_in_menu_without_default_roots() {
-    let mut app = App::new(std::path::PathBuf::from("."));
+    let fixture_home = std::env::temp_dir()
+        .canonicalize()
+        .unwrap()
+        .join(format!("optimac-ui-home-{}", std::process::id()));
+    std::fs::create_dir(&fixture_home).unwrap();
+    let mut app = App::with_home(fixture_home.clone(), fixture_home.clone());
     app.inventory_config =
         Some(optimac::cleanup::config::Config::parse("schema_version=2").unwrap());
     app.screen = Screen::Menu;
@@ -272,4 +277,15 @@ fn configured_inventory_runs_in_menu_without_default_roots() {
         "{output}"
     );
     assert!(!output.contains("Default-location hints"));
+    drop(output);
+    std::fs::remove_dir(fixture_home).unwrap();
+}
+
+#[test]
+fn missing_fixture_home_fails_closed() {
+    let app = App::new(std::path::PathBuf::from("."));
+    assert!(app.home_path.as_os_str().is_empty());
+    assert!(
+        optimac::paths::AppPaths::from_home(Some(app.home_path.as_os_str().to_owned())).is_err()
+    );
 }

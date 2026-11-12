@@ -107,12 +107,6 @@ pub fn ai_tools_status(home: &Path) -> String {
     output.push_str("\nLocal usage, account usage and quotas require verified provider-specific sources. Missing values are not zero or unlimited.\n");
     output
 }
-fn home() -> io::Result<PathBuf> {
-    std::env::var_os("HOME")
-        .map(PathBuf::from)
-        .ok_or_else(|| io::Error::other("HOME is unavailable"))
-}
-
 fn listing(root: &Path) -> String {
     match fs::read_dir(root) {
         Ok(entries) => {
@@ -274,13 +268,22 @@ pub(crate) fn review_paths(root: &Path, cancel: &AtomicBool) -> io::Result<(Vec<
     ))
 }
 pub fn run(index: Action, root: &Path, cancel: &AtomicBool) -> io::Result<String> {
-    let h = home()?;
+    let paths = crate::paths::AppPaths::from_env()?;
+    run_with_paths(index, root, cancel, &paths)
+}
+pub fn run_with_paths(
+    index: Action,
+    root: &Path,
+    cancel: &AtomicBool,
+    paths: &crate::paths::AppPaths,
+) -> io::Result<String> {
+    let h = paths.home();
     match index {
         Action::CleanPreview => {
-            Ok(crate::cleanup::inventory(&h, cancel, crate::cleanup::Budget::quick())?.render())
+            Ok(crate::cleanup::inventory(h, cancel, crate::cleanup::Budget::quick())?.render())
         }
         Action::Clean => {
-            let plan = crate::recovery::review_files(&h, root, cancel)?;
+            let plan = crate::recovery::review_files(h, root, cancel)?;
             Ok(format!(
                 "Grouped file review only. Select individual files in the Run cleanup menu to perform recoverable moves.\n{}",
                 crate::recovery::describe(&plan)
