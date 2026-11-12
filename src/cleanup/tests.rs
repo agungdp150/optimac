@@ -19,6 +19,8 @@ fn inventory_preserves_data_counts_hardlinks_once_and_excludes_apple() {
         .unwrap();
     assert_eq!(r.logical_bytes, Some(5));
     assert_eq!(r.files, 1);
+    assert!(r.skip_reasons.get("symlink").copied().unwrap_or(0) > 0);
+    assert!(serde_json::to_value(r).unwrap()["skip_reasons"].is_object());
     assert_eq!(r.status, Status::Partial);
     assert!(
         !report
@@ -465,6 +467,7 @@ fn summary_sorts_and_marks_incomplete_totals() {
             allocated_bytes: Some(n),
             files: 1,
             skipped: 0,
+            skip_reasons: Default::default(),
             errors: 0,
             note: if n == 19 {
                 "Budget reached; measured bytes are a lower bound".into()
@@ -605,6 +608,7 @@ fn class_groups_keep_review_separate_and_mark_incomplete() {
         allocated_bytes: Some(size),
         files: 1,
         skipped: 0,
+        skip_reasons: Default::default(),
         errors: 0,
         note: String::new(),
     };

@@ -162,6 +162,7 @@ mod tests {
             allocated_bytes: size,
             files: 1,
             skipped: 0,
+            skip_reasons: Default::default(),
             errors: 0,
             note: note.into(),
         }

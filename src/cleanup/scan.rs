@@ -118,6 +118,7 @@ pub(super) fn measure_observed(
     }
     if Instant::now() >= deadline || *remaining == 0 {
         r.status = Status::Partial;
+        r.reason("budget");
         r.note = "Global budget reached; not scanned".into();
         return r;
     }
@@ -187,6 +188,7 @@ pub(super) fn measure_observed(
         }
         if Instant::now() >= stop || visited >= budget.entries || *remaining == 0 {
             r.status = Status::Partial;
+            r.reason("budget");
             r.note = "Budget reached; measured bytes are a lower bound".into();
             break;
         }
@@ -198,13 +200,28 @@ pub(super) fn measure_observed(
         *remaining -= 1;
         let entry = match entry {
             Ok(e) => e,
-            Err(_) => {
+            Err(error) => {
+                r.reason(error_reason(&error));
                 r.errors += 1;
                 continue;
             }
         };
         let path = entry.path();
         if excluded(&path) {
+            r.skipped += 1;
+            r.reason(
+                if super::providers::protected_path(&path)
+                    || path.components().any(|p| {
+                        p.as_os_str().to_str().is_some_and(|n| {
+                            n.starts_with("com.apple.") || n.starts_with("group.com.apple.")
+                        })
+                    })
+                {
+                    "protected_name"
+                } else {
+                    "config_exclusion"
+                },
+            );
             observe(
                 &r,
                 &path,
@@ -215,6 +232,13 @@ pub(super) fn measure_observed(
         }
         // Recheck ancestors before each metadata operation; never open file contents.
         if let Err(error) = validate(&path) {
+            r.reason(if error.to_string().contains("Symlink") {
+                "symlink"
+            } else if error.to_string().contains("filesystem type") {
+                "mount_boundary"
+            } else {
+                error_reason(&error)
+            });
             observe(&r, &path, None, Some(&error.to_string()));
             if error.kind() == io::ErrorKind::PermissionDenied {
                 r.errors += 1;
@@ -225,25 +249,34 @@ pub(super) fn measure_observed(
         }
         let m = match fs::symlink_metadata(&path) {
             Ok(m) => m,
-            Err(_) => {
+            Err(error) => {
+                r.reason(error_reason(&error));
                 r.errors += 1;
                 continue;
             }
         };
         if crosses_device_boundary(device, m.dev()) {
+            r.reason("mount_boundary");
             observe(&r, &path, Some(&m), Some("mount or device boundary"));
             r.skipped += 1;
             continue;
         }
+        if m.is_file() && m.nlink() > 1 {
+            r.reason("hard_link");
+        }
         observe(&r, &path, Some(&m), None);
         if m.is_dir() {
             if stack.len() >= 32 {
+                r.reason("depth_limit");
                 r.skipped += 1;
                 continue;
             }
             match fs::read_dir(&path) {
                 Ok(i) => stack.push(i),
-                Err(_) => r.errors += 1,
+                Err(error) => {
+                    r.reason(error_reason(&error));
+                    r.errors += 1;
+                }
             }
         } else if m.is_file() {
             if seen.insert((m.dev(), m.ino())) {
@@ -254,11 +287,25 @@ pub(super) fn measure_observed(
                 r.skipped += 1;
             }
         } else {
+            r.reason("special_file");
             r.skipped += 1;
         }
     }
-    if r.status == Status::Complete && (r.errors > 0 || r.skipped > 0) {
+    if r.status == Status::Complete
+        && (r.errors > 0
+            || r.skipped
+                > r.skip_reasons.get("protected_name").copied().unwrap_or(0)
+                    + r.skip_reasons.get("config_exclusion").copied().unwrap_or(0))
+    {
         r.status = Status::Partial;
+    }
+    let reasons = r.reason_summary();
+    if !reasons.is_empty() {
+        if !r.note.is_empty() {
+            r.note.push_str("; ");
+        }
+        r.note
+            .push_str(&format!("skipped: {}; {reasons}", r.skipped));
     }
     r.logical_bytes = Some(logical);
     r.allocated_bytes = Some(allocated);
@@ -270,6 +317,14 @@ pub(super) fn measure_observed(
 /// This alone does not identify same-device virtual mounts or firmlinks.
 pub(super) fn crosses_device_boundary(parent_device: u64, child_device: u64) -> bool {
     parent_device != child_device
+}
+
+fn error_reason(error: &io::Error) -> &'static str {
+    match error.kind() {
+        io::ErrorKind::PermissionDenied => "permission_denied",
+        io::ErrorKind::NotFound => "vanished",
+        _ => "io_error",
+    }
 }
 
 #[cfg(test)]

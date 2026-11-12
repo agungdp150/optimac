@@ -10,6 +10,7 @@ fn row(id: &str, root: PathBuf) -> ProviderReport {
         allocated_bytes: None,
         files: 0,
         skipped: 0,
+        skip_reasons: Default::default(),
         errors: 0,
         note: String::new(),
     }
@@ -549,7 +550,7 @@ fn protected_component(name: &str) -> bool {
     ) || name.starts_with(".env")
         || name.ends_with(".photoslibrary")
 }
-fn protected_path(path: &Path) -> bool {
+pub(super) fn protected_path(path: &Path) -> bool {
     path.components()
         .any(|c| c.as_os_str().to_str().is_none_or(protected_component))
 }

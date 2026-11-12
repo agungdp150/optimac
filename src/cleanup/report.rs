@@ -23,9 +23,38 @@ pub struct ProviderReport {
     pub allocated_bytes: Option<u64>,
     pub files: u64,
     pub skipped: u64,
+    pub skip_reasons: std::collections::BTreeMap<String, u64>,
     pub errors: u64,
     pub note: String,
 }
+impl ProviderReport {
+    pub(super) fn reason(&mut self, reason: &str) {
+        *self.skip_reasons.entry(reason.into()).or_default() += 1;
+    }
+    pub fn reason_summary(&self) -> String {
+        self.skip_reasons
+            .iter()
+            .map(|(reason, count)| {
+                let label = match reason.as_str() {
+                    "symlink" => "symlinks not followed",
+                    "hard_link" => "hard-linked files",
+                    "protected_name" => "Apple-owned or protected names",
+                    "config_exclusion" => "configuration exclusions",
+                    "permission_denied" => "permission denied",
+                    "io_error" => "I/O errors",
+                    "vanished" => "vanished while scanning",
+                    "mount_boundary" => "mount boundaries",
+                    "budget" => "budget limits reached",
+                    "depth_limit" => "depth limits reached",
+                    _ => reason,
+                };
+                format!("{count} {label}")
+            })
+            .collect::<Vec<_>>()
+            .join(", ")
+    }
+}
+
 #[derive(Debug, Serialize)]
 pub struct Inventory {
     pub schema_version: u32,

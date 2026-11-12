@@ -202,6 +202,7 @@ mod tests {
             allocated_bytes: bytes,
             files: 0,
             skipped: 0,
+            skip_reasons: Default::default(),
             errors: 0,
             note: String::new(),
         };
