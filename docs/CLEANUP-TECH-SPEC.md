@@ -2,7 +2,7 @@
 
 ## Slice 1 authorization amendment (2026-11-12)
 
-A narrow cleanup v1 is planned. This slice authorizes **plan creation only**: metadata inspection and immutable, versioned plan files in OptiMac's private app data directory. It authorizes no writes, moves, renames or deletion inside candidate roots. Apply to recovery and permanent deletion remain separate, unimplemented gates; existing experimental recovery commands are not extended.
+A narrow cleanup v1 is planned. This slice authorizes **plan creation only**: metadata inspection and immutable, versioned plan files in OptiMac's private app data directory. It authorizes no writes, moves, renames or deletion inside candidate roots. Apply to recovery and permanent deletion remain separate, unimplemented gates; existing experimental recovery commands are not extended. **Amendment (Slice 3):** permanent deletion is authorized only for recovery payloads of schema-2 plan directory-unit records created by `clean apply`, through `recovery purge <id>`; nothing else (no v1 records, Trash, Docker, Application Support or project output).
 
 The planning allow-list is playwright-browsers, puppeteer-browsers, cypress-browsers, pnpm-store, the existing resolved npm cache directory, gradle-cache (caches only), cargo-registry cache, and Brave/Zen/Firefox/Chrome/Arc cache subtrees under app-user-caches. Membership is necessary, not sufficient: existing class/risk, root, mount, exclusion and completeness checks still apply. User state, unknown content, protected locations and every other provider remain excluded even when explicitly selected. A default-not-verified root requires explicit provider selection. No external tool command is added by this slice.
 

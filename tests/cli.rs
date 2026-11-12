@@ -643,3 +643,30 @@ fn clean_apply_cli_is_interactive_only_and_changes_nothing() {
     assert_eq!(std::fs::read_dir(&home).unwrap().count(), 0);
     std::fs::remove_dir_all(home).unwrap();
 }
+
+#[test]
+fn recovery_purge_cli_is_interactive_only_and_changes_nothing() {
+    let (home, _authorization) = authorized_home();
+    for args in [
+        vec!["recovery", "purge"],
+        vec!["recovery", "purge", "1", "--yes"],
+    ] {
+        let output = fixture_cli()
+            .args(&args)
+            .env("HOME", &home)
+            .output()
+            .unwrap();
+        assert_eq!(output.status.code(), Some(2));
+        assert!(String::from_utf8_lossy(&output.stderr).contains("Usage: optimac recovery purge"));
+    }
+    let output = fixture_cli()
+        .args(["recovery", "purge", "1"])
+        .env("HOME", &home)
+        .stdin(std::process::Stdio::null())
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(2));
+    assert!(String::from_utf8_lossy(&output.stderr).contains("requires an interactive terminal"));
+    assert_eq!(std::fs::read_dir(&home).unwrap().count(), 0);
+    std::fs::remove_dir_all(home).unwrap();
+}

@@ -205,44 +205,49 @@ fn main() -> ExitCode {
             };
         }
         if args.len() != 3 || args[1] != "purge" {
-            eprintln!("Usage: optimac recovery purge <id>; regular-file payloads only");
+            eprintln!(
+                "Usage: optimac recovery purge <id> | inspect <id|plan-id>; purge deletes plan directory-unit payloads only"
+            );
             return ExitCode::from(2);
         }
         if !std::io::stdin().is_terminal() || !std::io::stdout().is_terminal() {
-            eprintln!("Permanent purge requires an interactive terminal");
+            eprintln!(
+                "Permanent purge requires an interactive terminal; there is no noninteractive mode. Nothing deleted."
+            );
             return ExitCode::from(2);
         }
-        let result = (|| -> std::io::Result<String> {
+        let result = (|| -> std::io::Result<optimac::recovery::unit_purge::PurgeOutcome> {
             let paths = optimac::paths::AppPaths::from_env()?;
-            let home = paths.home();
             let id = args[2]
                 .to_str()
                 .ok_or_else(|| std::io::Error::other("Invalid ID"))?;
-            let plan = optimac::recovery::purge::plan(
+            let context = optimac::recovery::RecoveryContext::initialize(
+                paths.home(),
                 optimac::recovery::RecoveryPolicy::Production,
-                home,
-                id,
             )?;
-            println!("{}", plan.describe());
-            print!("Type DELETE {id} to confirm, or Enter to cancel: ");
-            std::io::stdout().flush()?;
-            let mut answer = String::new();
-            std::io::stdin().read_line(&mut answer)?;
-            if answer.trim() != format!("DELETE {id}") {
-                return Ok("Cancelled; no data changed".into());
-            }
-            optimac::recovery::purge::execute(
-                optimac::recovery::RecoveryPolicy::Production,
-                home,
-                &plan,
-                &cancel,
+            let mut activity = optimac::cleanup::activity::ProcessActivity::default();
+            let mut confirm = |prompt: &str| -> std::io::Result<bool> {
+                print!("{prompt}");
+                std::io::stdout().flush()?;
+                let mut answer = String::new();
+                std::io::stdin().read_line(&mut answer)?;
+                Ok(matches!(
+                    answer.trim().to_ascii_lowercase().as_str(),
+                    "y" | "yes"
+                ))
+            };
+            optimac::recovery::unit_purge::run(
+                &context,
+                None,
+                id,
+                &mut activity,
+                &mut confirm,
+                &mut std::io::stdout(),
             )
         })();
         return match result {
-            Ok(s) => {
-                println!("{s}");
-                ExitCode::SUCCESS
-            }
+            Ok(outcome) if outcome.declined || outcome.completed => ExitCode::SUCCESS,
+            Ok(_) => ExitCode::from(3),
             Err(e) => {
                 eprintln!("{e}");
                 ExitCode::FAILURE

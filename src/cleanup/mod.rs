@@ -31,7 +31,8 @@ mod scan;
 mod tests;
 pub mod trust;
 
-use accounting::available;
+/// Same available-space sampling as the inventory scan.
+pub(crate) use accounting::available;
 pub use providers::{
     configured_inventory, configured_inventory_with_progress, inventory, inventory_with_progress,
 };

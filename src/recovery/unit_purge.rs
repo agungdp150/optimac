@@ -138,8 +138,11 @@ pub(super) fn read_journal(directory: &File) -> io::Result<Option<PurgeJournal>>
     Ok(journal)
 }
 
+pub(super) fn count(n: usize) -> String {
+    format!("{n} {}", if n == 1 { "entry" } else { "entries" })
+}
 pub(super) fn entries(n: usize, what: &str) -> String {
-    format!("{n} {} {what}", if n == 1 { "entry" } else { "entries" })
+    format!("{} {what}", count(n))
 }
 
 /// True once a purge has written anything for this record.
@@ -700,6 +703,113 @@ impl RecoveryContext {
         directory.sync_all()?;
         Ok(PurgeResult { report, completed })
     }
+}
+
+pub const SPACE_LABEL: &str = "not exact bytes freed; snapshots and background activity affect it";
+
+#[derive(Debug, Default, PartialEq, Eq)]
+pub struct PurgeOutcome {
+    pub declined: bool,
+    pub completed: bool,
+    pub deleted: usize,
+    pub failed: usize,
+}
+
+fn signed_change(before: Option<u64>, after: Option<u64>) -> String {
+    match (before, after) {
+        (Some(b), Some(a)) if a >= b => format!("+{}", crate::format_size(a - b)),
+        (Some(b), Some(a)) => format!("-{}", crate::format_size(b - a)),
+        _ => "unavailable".into(),
+    }
+}
+
+/// `recovery purge <id>`: review, activity check, two default-No
+/// confirmations, purge, results. The caller supplies the terminal.
+pub fn run(
+    context: &RecoveryContext,
+    authority: Option<&FixtureRoot>,
+    id: &str,
+    activity: &mut dyn ActivityCheck,
+    confirm: &mut dyn FnMut(&str) -> io::Result<bool>,
+    out: &mut dyn Write,
+) -> io::Result<PurgeOutcome> {
+    let review = context.purge_review(authority, id)?;
+    let name = match review.start {
+        PurgeStart::Fresh => "payload",
+        PurgeStart::Resume => "deleting",
+    };
+    match activity.check(&context.root.join(id).join(name)) {
+        Activity::Idle => {}
+        Activity::InUse(why) => {
+            return Err(error(&format!(
+                "Payload is in use ({why}); nothing deleted"
+            )));
+        }
+        Activity::Unknown(why) => {
+            return Err(error(&format!(
+                "Payload activity is unknown ({why}); nothing deleted"
+            )));
+        }
+    }
+    let mut text = review.describe();
+    if review.start == PurgeStart::Resume {
+        text.push_str("\nThis continues an earlier purge of the same payload; it is already partially deleted.");
+    }
+    if let Some(note) = activity.coverage() {
+        text.push_str(&format!("\n{note}"));
+    }
+    writeln!(out, "{text}")?;
+    let size = crate::format_size(review.record.allocated_bytes);
+    if !confirm(&format!("Permanently delete recovery payload {id}? [y/N] "))?
+        || !confirm(&format!(
+            "Second confirmation: permanently delete {size} allocated (plan estimate)? [y/N] "
+        ))?
+    {
+        writeln!(out, "Cancelled; nothing deleted.")?;
+        return Ok(PurgeOutcome {
+            declined: true,
+            ..PurgeOutcome::default()
+        });
+    }
+    let before = crate::cleanup::available(&context.home);
+    let result = context.purge_directory_unit(authority, id, activity)?;
+    let after = crate::cleanup::available(&context.home);
+    let report = &result.report;
+    let mut text = format!(
+        "\nResults for recovery {id}\nDeleted: {}\nFailed: {}\n",
+        count(report.deleted),
+        count(report.failed)
+    );
+    for (path, reason) in &report.failures {
+        text.push_str(&format!("  {} — {reason}\n", path.display()));
+    }
+    if report.failed > report.failures.len() {
+        text.push_str(&format!(
+            "  … and {} more\n",
+            report.failed - report.failures.len()
+        ));
+    }
+    if let Some(stop) = &report.stopped {
+        text.push_str(&format!("Stopped: {stop}\n"));
+    }
+    text.push_str(&format!(
+        "Observed available space change: {} ({SPACE_LABEL})\n",
+        signed_change(before, after)
+    ));
+    text.push_str(&if result.completed {
+        "Completed: payload permanently deleted; the record and its journal are kept.\n".to_string()
+    } else {
+        format!(
+            "Incomplete: the payload is partially deleted and cannot be restored. No permissions or flags were changed. Fix the cause, then run optimac recovery purge {id} again to continue.\n"
+        )
+    });
+    out.write_all(text.as_bytes())?;
+    Ok(PurgeOutcome {
+        declined: false,
+        completed: result.completed,
+        deleted: report.deleted,
+        failed: report.failed,
+    })
 }
 
 #[cfg(all(test, target_os = "macos"))]
@@ -1299,5 +1409,118 @@ pub(super) mod tests {
             inspect(&s, "200").contains("purge_failed")
                 && inspect(&s, "200").contains("mount point")
         );
+    }
+
+    fn run_purge(
+        s: &Setup,
+        id: &str,
+        answers: &[bool],
+    ) -> (io::Result<PurgeOutcome>, String, Vec<String>) {
+        let mut prompts = Vec::new();
+        let mut answers = answers.iter().copied();
+        let mut confirm = |p: &str| {
+            prompts.push(p.to_string());
+            Ok(answers.next().unwrap_or(false))
+        };
+        let mut out = Vec::new();
+        let result = run(
+            &s.context,
+            Some(&s.cap),
+            id,
+            &mut idle(),
+            &mut confirm,
+            &mut out,
+        );
+        (result, String::from_utf8(out).unwrap(), prompts)
+    }
+
+    #[test]
+    fn purge_run_declined_first_or_second_confirmation_deletes_nothing() {
+        let s = Setup::new();
+        s.moved("chromium-1248", "100", Faults::default()).unwrap();
+        let before = metadata(&s.home);
+        let (result, out, prompts) = run_purge(&s, "100", &[false]);
+        println!("PURGE_DECLINED_FIRST\n{out}");
+        assert_eq!(
+            result.unwrap(),
+            PurgeOutcome {
+                declined: true,
+                ..PurgeOutcome::default()
+            }
+        );
+        assert_eq!(prompts, ["Permanently delete recovery payload 100? [y/N] "]);
+        assert!(out.contains(WARNING) && out.ends_with("Cancelled; nothing deleted.\n"));
+        assert_eq!(metadata(&s.home), before);
+        let (result, _, prompts) = run_purge(&s, "100", &[true, false]);
+        assert!(result.unwrap().declined);
+        assert_eq!(
+            prompts[1],
+            "Second confirmation: permanently delete 61.44 KB allocated (plan estimate)? [y/N] "
+        );
+        assert_eq!(metadata(&s.home), before);
+        assert!(inspect(&s, "100").contains("State: moved"));
+    }
+
+    #[test]
+    fn purge_run_reports_results_and_never_touches_historical_records() {
+        let s = Setup::new();
+        let historical = s.historical(30);
+        s.moved("chromium-1248", "100", Faults::default()).unwrap();
+        let history = |s: &Setup| {
+            metadata(&s.root())
+                .into_iter()
+                .filter(|m| !m.0.starts_with(s.root().join("100")))
+                .collect::<Vec<_>>()
+        };
+        let before = history(&s);
+        println!("INSPECT_BEFORE_PURGE\n{}", inspect(&s, "100"));
+        let (result, out, _) = run_purge(&s, "100", &[true, true]);
+        println!("PURGE_REVIEW_AND_RESULTS\n{out}");
+        let outcome = result.unwrap();
+        assert!(outcome.completed && outcome.failed == 0);
+        for needle in [
+            "Results for recovery 100\n",
+            &format!("Deleted: {}\n", super::count(outcome.deleted)),
+            "Failed: 0 entries\n",
+            "Observed available space change: ",
+            &format!("({SPACE_LABEL})\n"),
+            "Completed: payload permanently deleted; the record and its journal are kept.\n",
+        ] {
+            assert!(out.contains(needle), "missing {needle:?}\n{out}");
+        }
+        println!("INSPECT_AFTER_PURGE\n{}", inspect(&s, "100"));
+        assert_eq!(history(&s), before);
+        for id in &historical {
+            let (result, out, prompts) = run_purge(&s, id, &[true, true]);
+            assert!(result.unwrap_err().to_string().contains("version-1 record"));
+            assert!(out.is_empty() && prompts.is_empty());
+        }
+        assert_eq!(history(&s), before);
+    }
+
+    #[test]
+    fn purge_run_lists_failures_and_manual_resume() {
+        use std::os::unix::fs::PermissionsExt;
+        let s = Setup::new();
+        s.moved("chromium-1248", "100", Faults::default()).unwrap();
+        let readonly = s.root().join("100/payload/readonly");
+        fs::create_dir(&readonly).unwrap();
+        fs::write(readonly.join("a"), b"a").unwrap();
+        fs::set_permissions(&readonly, fs::Permissions::from_mode(0o500)).unwrap();
+        let (result, out, _) = run_purge(&s, "100", &[true, true]);
+        println!("PURGE_FAILED_RESULTS\n{out}");
+        let outcome = result.unwrap();
+        assert!(!outcome.completed && outcome.failed == 1);
+        assert!(out.contains("Failed: 1 entry\n  readonly/a — "));
+        assert!(out.contains("permissions were not changed"));
+        assert!(out.contains("run optimac recovery purge 100 again to continue"));
+        fs::set_permissions(
+            s.root().join("100/deleting/readonly"),
+            fs::Permissions::from_mode(0o700),
+        )
+        .unwrap();
+        let (result, out, _) = run_purge(&s, "100", &[true, true]);
+        assert!(out.contains("This continues an earlier purge of the same payload"));
+        assert!(result.unwrap().completed);
     }
 }
