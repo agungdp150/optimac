@@ -16,6 +16,7 @@ pub mod config;
 pub mod go;
 pub mod pip;
 pub mod plan;
+pub mod plan_builder;
 pub mod plan_store;
 mod projects;
 mod providers;

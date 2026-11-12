@@ -213,6 +213,16 @@
       "review": "passed_under_os_sandbox"
     },
     {
+      "name": "optimac:lib/cleanup::plan_builder::tests::immutable_plan_builds_allowed_roots_and_preserves_fixture_tree",
+      "class": "fixture_fs",
+      "review": "passed_under_os_sandbox"
+    },
+    {
+      "name": "optimac:lib/cleanup::plan_builder::tests::immutable_plan_excludes_unsafe_units_and_incomplete_providers",
+      "class": "fixture_fs",
+      "review": "passed_under_os_sandbox"
+    },
+    {
       "name": "optimac:lib/cleanup::plan_store::tests::immutable_plan_rejects_root_units_and_tampering",
       "class": "fixture_fs",
       "review": "passed_under_os_sandbox"

@@ -296,6 +296,17 @@ pub fn configured_inventory_with_progress(
     config: &config::Config,
     progress: &mut dyn FnMut(&ProviderReport),
 ) -> io::Result<Inventory> {
+    configured_inventory_observed(home, cancel, budget, config, progress, &mut |_, _, _, _| {})
+}
+
+pub(super) fn configured_inventory_observed(
+    home: &Path,
+    cancel: &AtomicBool,
+    budget: Budget,
+    config: &config::Config,
+    progress: &mut dyn FnMut(&ProviderReport),
+    observe: &mut super::scan::ObservationCallback<'_>,
+) -> io::Result<Inventory> {
     let budget = config.scan_budget(budget)?;
     let pip_enabled = config
         .value
@@ -481,7 +492,7 @@ pub fn configured_inventory_with_progress(
             if r.status != Status::Complete || r.logical_bytes.is_some() {
                 reports.push(r);
             } else {
-                reports.push(measure(
+                reports.push(super::scan::measure_observed(
                     r,
                     cancel,
                     share,
@@ -494,6 +505,7 @@ pub fn configured_inventory_with_progress(
                             || (is_generic(&job.id) && claims.iter().any(|c| p.starts_with(c)))
                     },
                     progress,
+                    observe,
                 ));
             }
         }

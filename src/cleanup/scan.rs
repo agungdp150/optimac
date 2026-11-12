@@ -71,6 +71,33 @@ pub(super) fn validate(path: &Path) -> io::Result<()> {
 }
 #[allow(clippy::too_many_arguments)]
 pub(super) fn measure(
+    r: ProviderReport,
+    cancel: &AtomicBool,
+    budget: Budget,
+    deadline: Instant,
+    seen: &mut HashSet<(u64, u64)>,
+    remaining: &mut usize,
+    excluded: &dyn Fn(&Path) -> bool,
+    progress: &mut dyn FnMut(&ProviderReport),
+) -> ProviderReport {
+    measure_observed(
+        r,
+        cancel,
+        budget,
+        deadline,
+        seen,
+        remaining,
+        excluded,
+        progress,
+        &mut |_, _, _, _| {},
+    )
+}
+
+pub(super) type ObservationCallback<'a> =
+    dyn FnMut(&ProviderReport, &Path, Option<&fs::Metadata>, Option<&str>) + 'a;
+
+#[allow(clippy::too_many_arguments)]
+pub(super) fn measure_observed(
     mut r: ProviderReport,
     cancel: &AtomicBool,
     budget: Budget,
@@ -79,6 +106,7 @@ pub(super) fn measure(
     remaining: &mut usize,
     excluded: &dyn Fn(&Path) -> bool,
     progress: &mut dyn FnMut(&ProviderReport),
+    observe: &mut ObservationCallback<'_>,
 ) -> ProviderReport {
     if excluded(&r.root) {
         r.note = "Excluded by policy".into();
@@ -177,10 +205,17 @@ pub(super) fn measure(
         };
         let path = entry.path();
         if excluded(&path) {
+            observe(
+                &r,
+                &path,
+                None,
+                Some("excluded by configuration or protected-path policy"),
+            );
             continue;
         }
         // Recheck ancestors before each metadata operation; never open file contents.
         if let Err(error) = validate(&path) {
+            observe(&r, &path, None, Some(&error.to_string()));
             if error.kind() == io::ErrorKind::PermissionDenied {
                 r.errors += 1;
             } else {
@@ -196,9 +231,11 @@ pub(super) fn measure(
             }
         };
         if crosses_device_boundary(device, m.dev()) {
+            observe(&r, &path, Some(&m), Some("mount or device boundary"));
             r.skipped += 1;
             continue;
         }
+        observe(&r, &path, Some(&m), None);
         if m.is_dir() {
             if stack.len() >= 32 {
                 r.skipped += 1;
