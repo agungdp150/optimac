@@ -10,6 +10,8 @@ Each registry entry has an explicit certification state. Initially it is invento
 
 ## Executable trust
 
+For read-only Phase 1 inventory probes, the lightweight policy in CLEANUP-TECH-SPEC.md applies instead of the enrollment requirements below. The full requirements below remain mandatory before Step 3 enables new deletion operations. Inventory probes do not certify tools for mutation.
+
 Never search arbitrary PATH or execute a candidate merely to find its version. Initial location candidates are Apple tools under /usr/bin, /usr/sbin and /bin; Homebrew under /opt/homebrew/bin or /usr/local/bin; Docker CLI inside /Applications/Docker.app/Contents/Resources/bin. Other tools and version-manager installs require an explicitly selected installation root and trust enrollment before any subprocess runs. Location alone is not authenticity.
 
 Inspect every ancestor and symlink hop using no-follow metadata, limit resolution to 16 hops, and pin final device/inode, owner, mode and content digest. Accept root/current-user ownership; reject group/other write access, unexpected ACL writers, project/cache/download roots and unrecognized symlink destinations. Homebrew symlinks may resolve only into the enrolled Homebrew prefix/Cellar. Apple and signed application executables require valid designated signatures checked with Security.framework and a release-pinned identity; no invented Team IDs. Homebrew/user-owned binaries require explicit installation trust, not a claim that codesign verifies all packages.

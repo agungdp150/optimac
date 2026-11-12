@@ -98,6 +98,10 @@ Report daemon-reported bytes separately from host disk change. Docker Desktop ma
 | Minecraft       | Inventory only; no cleanup rule enabled.                                                                                                          | No sufficiently specific vendor-supported macOS cache contract was established in this research. Preserve worlds, mods, resource packs, screenshots, versions and credentials. A future rule requires launcher/edition-specific evidence.                                                                     |
 | Microsoft Teams | Version-specific troubleshooting guidance first.                                                                                                  | Cache reset may clear local application state; do not classify whole application/group containers as disposable cache. Require Teams to be closed and explain reset effects. [Microsoft](https://learn.microsoft.com/en-us/microsoftteams/troubleshoot/teams-administration/clear-teams-cache)                |
 
+## Inventory executable policy
+
+Read-only inventory may probe fixed absolute executable candidates without full enrollment after refusing final-component symlinks and files or ancestors writable by other users. Environment and supported configuration take precedence; subprocesses use bounded output, explicit environment and a neutral directory, without PATH search, shell, network or automatic installation. These checks are a lightweight inventory policy, not executable authentication. Full executable trust enrollment and the adapter contract are required before Step 3 can enable new deletion operations.
+
 ## Architecture
 
 Introduce `src/cleanup/` with `provider.rs`, `policy.rs`, `plan.rs`, `accounting.rs`, `executor.rs`, `journal.rs` and `providers/`. Reuse hardened filesystem primitives from recovery, but do not reuse file-category labels as authorization.

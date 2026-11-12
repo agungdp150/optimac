@@ -95,3 +95,9 @@ Added non-executing `TrustRecord`/`TrustStore` types and a bounded, strict JSON 
 ### Trust library follow-up
 
 Added an in-memory schema serialization round-trip test and malformed/duplicate record cases. Atomic persistence, no-follow SHA-256 capture, verification and signature checks remain unimplemented. No trust store file is written and no executable is run. These are prerequisites before any enrollment or discovery. Existing changes span untracked cleanup files and other pre-existing modifications; no isolated implementation milestone was completed or committed in this follow-up.
+
+### Inventory discovery policy change
+
+Pip/Go read-only inventory will use fixed absolute candidates, reject final symlinks and files or ancestors writable by other users, prefer explicit environment settings and use bounded subprocesses with a neutral directory and explicit environment. Full executable trust enrollment is deferred until before Step 3 enables new deletion operations. The lightweight checks do not establish authenticity. Implementation and fixture tests are pending.
+
+The pip/Go command resolver is **not yet implemented**. Existing scans still use environment/default metadata hints and do not report tool probe status. Before adding probes, isolate tests from actual installed tools, validate every returned root and provide explicit unsupported/failed outcomes. The new inventory policy changes no runtime behavior or mutation authorization.
