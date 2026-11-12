@@ -36,4 +36,6 @@ pub use providers::{
 pub use report::{Budget, Inventory, ProviderReport, Status};
 use scan::{measure, status, validate};
 
+/// Shared protected-name policy for recovery record validation.
+pub(crate) use providers::protected_path;
 pub use registry::{Capability, catalog};

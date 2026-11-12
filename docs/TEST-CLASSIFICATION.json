@@ -501,6 +501,11 @@
       "name": "optimac:lib/recovery::tests::recover_without_overwriting",
       "class": "recovery_blocked",
       "review": "classified"
+    },
+    {
+      "name": "optimac:lib/recovery::unit::tests::recovery_record_versions_load_v1_and_unit_records_fail_closed",
+      "class": "fixture_fs",
+      "review": "passed_under_os_sandbox"
     }
   ]
 }

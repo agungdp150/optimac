@@ -550,7 +550,7 @@ fn protected_component(name: &str) -> bool {
     ) || name.starts_with(".env")
         || name.ends_with(".photoslibrary")
 }
-pub(super) fn protected_path(path: &Path) -> bool {
+pub(crate) fn protected_path(path: &Path) -> bool {
     path.components()
         .any(|c| c.as_os_str().to_str().is_none_or(protected_component))
 }

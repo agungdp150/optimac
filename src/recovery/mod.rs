@@ -2,6 +2,7 @@ mod context;
 #[path = "fs.rs"]
 mod fs_ops;
 pub mod purge;
+pub mod unit;
 pub use context::{RecoveryContext, RecoveryPolicy};
 use fs_ops::{move_exclusive, operation_lock, sync_dir};
 // Conservative, journaled, same-volume cache cleanup. Never permanently deletes.
@@ -41,7 +42,7 @@ pub struct Plan {
     pub items: Vec<Candidate>,
     pub notes: Vec<String>,
 }
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 struct Record {
     version: u32,
     candidate: Candidate,

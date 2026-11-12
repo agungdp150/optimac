@@ -166,6 +166,17 @@ impl RecoveryContext {
     /// Persist the existing version-1 recovery record before moving a payload.
     /// This operation does not authorize or move the candidate itself.
     pub fn create_journal(&self, id: &str, candidate: &Candidate) -> io::Result<File> {
+        self.create_journal_bytes(
+            id,
+            &serde_json::to_vec(&Record {
+                version: 1,
+                candidate: candidate.clone(),
+            })?,
+        )
+    }
+
+    /// Create a new private record directory and durably write `record.json`.
+    pub(super) fn create_journal_bytes(&self, id: &str, record: &[u8]) -> io::Result<File> {
         if id.is_empty() || !id.chars().all(|c| c.is_ascii_digit() || c == '-') {
             return Err(error("Invalid recovery ID"));
         }
@@ -183,10 +194,7 @@ impl RecoveryContext {
             "record.json",
             libc::O_WRONLY | libc::O_CREAT | libc::O_EXCL,
         )?;
-        file.write_all(&serde_json::to_vec(&Record {
-            version: 1,
-            candidate: candidate.clone(),
-        })?)?;
+        file.write_all(record)?;
         file.sync_all()?;
         directory.sync_all()?;
         self.directory.sync_all()?;

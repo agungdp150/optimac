@@ -47,7 +47,15 @@ fn checked_payload(
     if data.len() > 65536 {
         return Err(error("Oversized recovery record"));
     }
-    let record: Record = serde_json::from_slice(&data)?;
+    let record = match super::unit::parse_record(&data)? {
+        super::unit::StoredRecord::V1(record) => record,
+        super::unit::StoredRecord::Unit(unit) => {
+            return Err(error(&format!(
+                "Recovery {id} is a directory-unit record ({}); directory purge is not implemented",
+                unit.original_path.display()
+            )));
+        }
+    };
     let payload = dir.join("payload");
     let m = fs::symlink_metadata(&payload)?;
     if record.version != 1
