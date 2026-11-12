@@ -103,7 +103,31 @@ pub fn inventory_with_progress(
     let deadline = Instant::now() + budget.total;
     let mut roots = Vec::new();
     let pip = super::pip::resolve(home, cancel);
+    let go = super::go::resolve(home, cancel);
     for &(id, relative) in super::registry::ROOTS {
+        if id == "go-build" || id == "go-modules" {
+            let g = if id == "go-build" {
+                &go.build
+            } else {
+                &go.modules
+            };
+            let mut r = row(id, g.path.clone().unwrap_or_else(|| home.join(relative)));
+            r.note = format!(
+                "go {}: {}{}",
+                g.status,
+                g.detail,
+                if id == "go-modules" {
+                    " (review; never auto-selected)"
+                } else {
+                    " (rebuildable cache)"
+                }
+            );
+            if g.path.is_none() {
+                r.status = Status::Blocked;
+            }
+            roots.push(r);
+            continue;
+        }
         if id == "pip-cache" {
             let mut r = row(
                 id,
@@ -234,7 +258,24 @@ pub fn configured_inventory_with_progress(
             })
         });
     let pip = pip_enabled.then(|| super::pip::resolve(home, cancel));
-    let jobs = config.jobs(home, pip.as_ref())?;
+    let go_enabled = config
+        .value
+        .get("rule")
+        .and_then(toml::Value::as_array)
+        .is_some_and(|rules| {
+            rules.iter().any(|r| {
+                matches!(
+                    r.get("id").and_then(toml::Value::as_str),
+                    Some("go-build" | "go-modules")
+                ) && r
+                    .get("enabled")
+                    .or_else(|| config.value.get("defaults").and_then(|d| d.get("enabled")))
+                    .and_then(toml::Value::as_bool)
+                    == Some(true)
+            })
+        });
+    let go = go_enabled.then(|| super::go::resolve(home, cancel));
+    let jobs = config.jobs(home, pip.as_ref(), go.as_ref())?;
     let claims: Vec<_> = super::registry::ROOTS
         .iter()
         .map(|(id, path)| {
@@ -254,6 +295,20 @@ pub fn configured_inventory_with_progress(
         let mut job_remaining = (remaining / (job_count - job_index)).min(budget.entries);
         let job_initial = job_remaining;
         let mut roots = Vec::new();
+        let go_result = go.as_ref().and_then(|g| match job.id.as_str() {
+            "go-build" => Some(&g.build),
+            "go-modules" => Some(&g.modules),
+            _ => None,
+        });
+        if let Some(g) = go_result
+            && g.path.is_none()
+        {
+            let mut r = row(&job.id, home.to_path_buf());
+            r.status = Status::Blocked;
+            r.note = format!("go {}: {}", g.status, g.detail);
+            reports.push(r);
+            continue;
+        }
         if job.id == "pip" && pip.as_ref().is_some_and(|p| p.path.is_none()) {
             let mut r = row("pip", home.join("Library/Caches/pip"));
             r.status = Status::Blocked;
@@ -325,6 +380,18 @@ pub fn configured_inventory_with_progress(
                 ),
                 _ => {
                     let mut r = row(&job.id, root.clone());
+                    if let Some(g) = go_result {
+                        r.note = format!(
+                            "go {}: {}{}",
+                            g.status,
+                            g.detail,
+                            if job.id == "go-modules" {
+                                " (review; never auto-selected)"
+                            } else {
+                                " (rebuildable cache)"
+                            }
+                        );
+                    }
                     if job.id == "pip" {
                         let p = pip.as_ref().unwrap();
                         r.note = format!("pip {}: {}", p.status, p.detail);

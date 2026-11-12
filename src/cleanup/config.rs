@@ -443,11 +443,22 @@ impl Config {
         &self,
         home: &Path,
         pip: Option<&super::pip::Resolution>,
+        go: Option<&super::go::GoRoots>,
     ) -> io::Result<Vec<Job>> {
         self.jobs_with_env(home, |key| {
             if key == "PIP_CACHE_DIR" {
                 pip.and_then(|p| p.path.as_ref().map(|v| v.as_os_str().to_owned()))
                     .or_else(|| std::env::var_os(key))
+            } else if key == "GOCACHE" || key == "GOMODCACHE" {
+                go.and_then(|g| {
+                    if key == "GOCACHE" {
+                        g.build.path.as_ref()
+                    } else {
+                        g.modules.path.as_ref()
+                    }
+                })
+                .map(|p| p.as_os_str().to_owned())
+                .or_else(|| std::env::var_os(key))
             } else {
                 std::env::var_os(key)
             }

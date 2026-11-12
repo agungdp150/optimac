@@ -12,6 +12,7 @@ use std::{
 mod access;
 mod accounting;
 pub mod config;
+pub mod go;
 pub mod pip;
 mod projects;
 mod providers;

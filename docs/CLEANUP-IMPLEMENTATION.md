@@ -109,3 +109,9 @@ Added a test-only candidate permission-check prototype and a disposable fixture 
 ### Pip inventory resolver
 
 Default and enabled configured scans resolve pip from PIP_CACHE_DIR first, then a fixed candidate via `pip cache dir`, falling back to the macOS default when no candidate exists. Scan output includes the source/status; `clean providers --json` includes a pip result. Invalid/outside-home roots are blocked. Candidate permissions and symlinks are checked; this is not executable authentication or an operating-system network sandbox. Tests use fixture candidates; Go discovery and full trust enrollment remain pending. The lightweight checks cannot prove a probed executable does not access the network.
+
+### Go inventory and pip source labels
+
+Pip source notes now identify PIP_CACHE_DIR and its path. All resolved roots must be inside the supplied home and pass ancestor/symlink validation: the earlier `/private/tmp/...` example was accepted because that temporary directory was the test's HOME, not because outside-home overrides are allowed. Fake-tool fixtures test allowed and rejected roots.
+
+Go build and module caches are resolved separately from GOCACHE/GOMODCACHE, a fixed-candidate `go env` probe, or unverified defaults. Each scan row reports its source; modules remain review-only and unselected. Configured scans use the same resolution for enabled Go rules. Fake Go fixtures cover output, override, invalid root, defaults and command failure. The lightweight executable policy and environment flags do not provide network isolation or authenticate binaries; full enrollment remains required before new mutation adapters.

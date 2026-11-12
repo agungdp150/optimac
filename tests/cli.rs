@@ -102,6 +102,8 @@ fn cleanup_inventory_json_is_read_only_and_reports_unknown_roots() {
         .args(["clean", "scan", "--json"])
         .env("HOME", &home)
         .env("PIP_CACHE_DIR", home.join("pip-fixture"))
+        .env("GOCACHE", home.join("pip-fixture"))
+        .env("GOMODCACHE", home.join("pip-fixture"))
         .output()
         .unwrap();
     assert!(output.status.success(), "{:?}", output);

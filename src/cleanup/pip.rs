@@ -40,7 +40,7 @@ pub struct Resolution {
     pub detail: String,
 }
 
-fn checked_root(home: &Path, root: PathBuf, source: &'static str) -> Resolution {
+pub(super) fn checked_root(home: &Path, root: PathBuf, source: &'static str) -> Resolution {
     let validation = super::scan::validate(&root);
     let absent_default = source == "default_not_verified"
         && validation
@@ -60,8 +60,16 @@ fn checked_root(home: &Path, root: PathBuf, source: &'static str) -> Resolution 
     }
     Resolution {
         status: source,
+        detail: format!(
+            "{}: {}",
+            match source {
+                "from_env" => "PIP_CACHE_DIR",
+                "from_tool" => "tool output",
+                _ => "default, not verified",
+            },
+            root.display()
+        ),
         path: Some(root),
-        detail: String::new(),
     }
 }
 
@@ -177,9 +185,17 @@ mod tests {
         std::fs::set_permissions(&binary, std::fs::Permissions::from_mode(0o700)).unwrap();
         let cancel = std::sync::atomic::AtomicBool::new(false);
         let list = [binary.to_str().unwrap()];
+        let env_result = resolve_with(&base, Some(base.join("custom").into()), &list, &cancel);
         assert_eq!(
-            resolve_with(&base, Some(base.join("custom").into()), &list, &cancel).status,
-            "from_env"
+            format!("pip {}: {}", env_result.status, env_result.detail),
+            format!(
+                "pip from_env: PIP_CACHE_DIR: {}",
+                base.join("custom").display()
+            )
+        );
+        assert_eq!(
+            resolve_with(&base, Some("/private/tmp/outside".into()), &list, &cancel).status,
+            "root_invalid"
         );
         let r = resolve_with(&base, None, &list, &cancel);
         assert_eq!(r.status, "from_tool", "{}", r.detail);
