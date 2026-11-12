@@ -59,10 +59,20 @@ pub(super) fn lock_at(root: &File) -> io::Result<File> {
     if !m.is_file() || m.nlink() != 1 || m.uid() != unsafe { libc::geteuid() } {
         return Err(error("Unsafe recovery lock"));
     }
-    if unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } != 0 {
-        return Err(error("Another recovery operation is running"));
+    // A process forked by this one (between fork and exec) briefly shares the
+    // lock's open file description, so a just-released lock can look held.
+    // Retry for a bounded half second before reporting a real concurrent holder.
+    for attempt in 0..50 {
+        if unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) } == 0 {
+            return Ok(file);
+        }
+        let busy = io::Error::last_os_error().raw_os_error() == Some(libc::EWOULDBLOCK);
+        if !busy || attempt == 49 {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
     }
-    Ok(file)
+    Err(error("Another recovery operation is running"))
 }
 
 pub(super) fn open_dir(path: &Path) -> io::Result<File> {
